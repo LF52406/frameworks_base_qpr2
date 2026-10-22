@@ -531,7 +531,7 @@ class MobileIconViewModelTest : SysuiTestCase() {
         }
 
     @Test
-    fun networkType_nullWhenDataDisconnects() =
+    fun networkType_shownWhenDataDisconnectsButCellularIsInService() =
         testScope.runTest {
             val initial =
                 Icon.Resource(
@@ -545,9 +545,10 @@ class MobileIconViewModelTest : SysuiTestCase() {
 
             assertThat(latest).isEqualTo(initial)
 
+            // The phone can remain on LTE while Wi-Fi becomes the default data path.
             repository.dataConnectionState.value = DataConnectionState.Disconnected
 
-            assertThat(latest).isNull()
+            assertThat(latest).isEqualTo(initial)
 
             job.cancel()
         }
@@ -682,7 +683,7 @@ class MobileIconViewModelTest : SysuiTestCase() {
         }
 
     @Test
-    fun networkType_notShownWhenNotDefault() =
+    fun networkType_shownWhenWifiIsDefaultButCellularIsRegistered() =
         testScope.runTest {
             repository.setNetworkTypeKey(connectionsRepository.GSM_KEY)
             repository.dataConnectionState.value = DataConnectionState.Connected
@@ -691,8 +692,33 @@ class MobileIconViewModelTest : SysuiTestCase() {
             var latest: Icon? = null
             val job = underTest.networkTypeIcon.onEach { latest = it }.launchIn(this)
 
-            assertThat(latest).isNull()
+            val expected =
+                Icon.Resource(
+                    THREE_G.dataType,
+                    ContentDescription.Resource(THREE_G.dataContentDescription),
+                )
+            assertThat(latest).isEqualTo(expected)
 
+            job.cancel()
+        }
+
+    @Test
+    fun networkType_nullWhenOutOfService() =
+        testScope.runTest {
+            repository.isInService.value = false
+            var latest: Icon? = null
+            val job = underTest.networkTypeIcon.onEach { latest = it }.launchIn(this)
+            assertThat(latest).isNull()
+            job.cancel()
+        }
+
+    @Test
+    fun networkType_nullWhenEmergencyOnly() =
+        testScope.runTest {
+            repository.isEmergencyOnly.value = true
+            var latest: Icon? = null
+            val job = underTest.networkTypeIcon.onEach { latest = it }.launchIn(this)
+            assertThat(latest).isNull()
             job.cancel()
         }
 

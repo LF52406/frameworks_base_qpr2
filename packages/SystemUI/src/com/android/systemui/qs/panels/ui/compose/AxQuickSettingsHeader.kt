@@ -193,11 +193,18 @@ fun AxQuickSettingsHeader(
         }
         if (landscape) {
             val statusBarHeightDp = with(LocalDensity.current) { viewModel.statusBarHeightPx.toDp() }
-            Box(
-                Modifier.fillMaxWidth().heightIn(min = statusBarHeightDp)
+            // Keep the clock/date and carrier/status icons in separate measured regions.
+            // Independent overlaid boxes can collide on narrow landscape displays.
+            Row(
+                modifier = Modifier.fillMaxWidth().heightIn(min = statusBarHeightDp),
+                verticalAlignment = Alignment.Top,
             ) {
-                Box(modifier = Modifier.align(Alignment.TopStart)) { startContent() }
-                Box(modifier = Modifier.align(Alignment.TopEnd)) { endContent() }
+                Box(modifier = Modifier.weight(1f), contentAlignment = Alignment.TopStart) {
+                    startContent()
+                }
+                Box(modifier = Modifier.weight(1f), contentAlignment = Alignment.TopEnd) {
+                    endContent()
+                }
             }
         } else {
             AxCutoutAwareShadeHeader(
@@ -227,7 +234,11 @@ private fun AxStatusIcons(
         )
     } else {
         val statusIconContext = LocalStatusIconContext.current
-        val iconContainer = statusIconContext.iconContainer(AxQuickSettingsHeaderContent)
+        val iconContainer = statusIconContext.iconContainer(AxQuickSettingsHeaderContent).apply {
+            // Do not replace an eighth icon with a dot if all icons actually fit.
+            // Overflow remains enabled when the measured width is insufficient.
+            setShouldRestrictIcons(false)
+        }
         val iconManager = statusIconContext.iconManager(AxQuickSettingsHeaderContent)
         val movableContent =
             remember(statusIconContext, iconManager) {
@@ -241,7 +252,9 @@ private fun AxStatusIcons(
             iconContainer = iconContainer,
             iconManager = iconManager,
             statusBarIconController = viewModel.statusBarIconController,
-            useExpandedFormat = !viewModel.isSingleCarrier,
+            // The carrier label is drawn separately. Preserve real mobile network
+            // icons, including with two SIM subscriptions.
+            useExpandedFormat = false,
             isTransitioning = isTransitioning,
             foregroundColor = foregroundColor,
             backgroundColor = backgroundColor,
@@ -510,7 +523,14 @@ object AxQuickSettingsLayoutDefaults {
     val LandscapeSplitGridSpacing = AxQsLayoutPadding.LANDSCAPE_SPLIT_GRID_SPACING_DP.dp
     val LandscapeHeaderContentSpacing = 8.dp
     val LandscapeHeaderHeight: Dp
-        @Composable get() = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
+        @Composable
+        get() {
+            val statusBarInset = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
+            val fontScale = LocalConfiguration.current.fontScale.coerceAtLeast(1f)
+            // The two-line carrier + status-icon header needs more room than the
+            // system status bar inset. The split QS toolbar must start below it.
+            return statusBarInset + 64.dp * fontScale
+        }
 }
 
 @Composable
