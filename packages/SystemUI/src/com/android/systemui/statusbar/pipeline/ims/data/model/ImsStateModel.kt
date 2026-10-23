@@ -17,6 +17,7 @@ package com.android.systemui.statusbar.pipeline.ims.data.model
 
 import android.telephony.ims.feature.MmTelFeature
 import android.telephony.ims.stub.ImsRegistrationImplBase.REGISTRATION_TECH_IWLAN
+import android.telephony.ims.stub.ImsRegistrationImplBase.REGISTRATION_TECH_LTE
 import android.telephony.ims.stub.ImsRegistrationImplBase.REGISTRATION_TECH_NONE
 
 data class ImsStateModel(
@@ -31,6 +32,10 @@ data class ImsStateModel(
     fun isHdVoiceCapable(): Boolean =
         registered && capabilities
             ?.isCapable(MmTelFeature.MmTelCapabilities.CAPABILITY_TYPE_VOICE) ?: false
+
+    /** Require voice-capable IMS registration on LTE; mobile data LTE alone is insufficient. */
+    fun isVolteAvailable(): Boolean =
+        isHdVoiceCapable() && registrationTech == REGISTRATION_TECH_LTE
 
     fun isVoWifiAvailable(): Boolean =
         isHdVoiceCapable() && registrationTech == REGISTRATION_TECH_IWLAN

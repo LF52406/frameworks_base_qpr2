@@ -66,10 +66,21 @@
                 android:adjustViewBounds="true"
                 />
         </FrameLayout>
+        <!-- LTE IMS voice indicator stays beside, not on top of, the mobile signal. -->
+        <ImageView
+            android:id="@+id/mobile_hd"
+            android:layout_width="24dp"
+            android:layout_height="8dp"
+            android:layout_gravity="center_vertical"
+            android:layout_marginStart="1dp"
+            android:src="@drawable/ic_statusbar_volte_text"
+            android:adjustViewBounds="true"
+            android:contentDescription="VoLTE"
+            android:visibility="gone" />
         <Space
             android:id="@+id/mobile_hd_space"
             android:layout_height="match_parent"
-            android:layout_width="2.5dp"
+            android:layout_width="2dp"
             android:visibility="gone"
             />
         <FrameLayout
@@ -83,17 +94,6 @@
                 android:adjustViewBounds="true"
                 systemui:hasOverlappingRendering="false"
                 />
-            <!-- TODO(b/314812750): this can be removed once the flag is rolled out -->
-            <ImageView
-                android:id="@+id/mobile_hd"
-                android:layout_width="12dp"
-                android:layout_height="8dp"
-                android:layout_marginTop="1dp"
-                android:layout_gravity="start|top"
-                android:src="@drawable/ic_hd_calling"
-                android:adjustViewBounds="true"
-                android:gravity="start|top"
-                android:visibility="gone" />
         </FrameLayout>
         <ImageView
             android:id="@+id/mobile_roaming_updated"
