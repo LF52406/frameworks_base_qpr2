@@ -156,6 +156,7 @@ import com.android.systemui.qs.composefragment.ui.toEditMode
 import com.android.systemui.qs.composefragment.viewmodel.QSFragmentComposeViewModel
 import com.android.systemui.qs.panels.shared.model.QSFragmentComposeClippingTableLog
 import com.android.systemui.qs.panels.ui.compose.AxQuickSettingsHeader
+import com.android.systemui.qs.panels.ui.compose.AxQuickSettingsLayoutDefaults
 import com.android.systemui.qs.panels.ui.compose.EditMode
 import com.android.systemui.qs.panels.ui.compose.LocalAxQsExpansionProgress
 import com.android.systemui.qs.panels.ui.compose.QuickQuickSettings
@@ -1129,21 +1130,30 @@ constructor(
 
     @Composable
     private fun quickSettingsContentTopPadding(): Dp {
-        if (LocalConfiguration.current.orientation == Configuration.ORIENTATION_LANDSCAPE) {
-            return 0.dp
-        }
-        val displayCutoutTop =
-            WindowInsets.displayCutout.asPaddingValues().calculateTopPadding()
+        val landscape =
+            LocalConfiguration.current.orientation == Configuration.ORIENTATION_LANDSCAPE
         val statusBarHeight =
             WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
         val density = LocalDensity.current
+        // The overlay header reports its actual measured height via onSizeChanged.
+        // A short fallback protects its first frame before measurement is available.
         val headerHeight =
             if (overlayHeaderHeightPx > 0) {
                 with(density) { overlayHeaderHeightPx.toDp() }
             } else {
-                statusBarHeight + 24.dp
+                statusBarHeight + if (landscape) 48.dp else 24.dp
             }
-        return displayCutoutTop + headerHeight + QuickSettingsShade.Dimensions.ShortPadding
+        if (landscape) {
+            // Place toolbar actions immediately below the *measured* clock /
+            // carrier / status-icon header. Avoid the former fixed 64dp spacer
+            // plus duplicated status-bar inset, which clipped landscape QS.
+            return maxOf(headerHeight, statusBarHeight) +
+                AxQuickSettingsLayoutDefaults.LandscapeHeaderContentSpacing
+        }
+        val displayCutoutTop =
+            WindowInsets.displayCutout.asPaddingValues().calculateTopPadding()
+        return displayCutoutTop + headerHeight +
+            QuickSettingsShade.Dimensions.ShortPadding
     }
 
     private fun useOverlayShadeHeader() = true

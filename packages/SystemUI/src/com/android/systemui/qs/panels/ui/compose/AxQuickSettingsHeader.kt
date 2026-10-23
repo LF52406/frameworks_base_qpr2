@@ -41,13 +41,10 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.MaterialTheme
@@ -522,15 +519,6 @@ object AxQuickSettingsLayoutDefaults {
     val LandscapeGridSpacing = 16.dp
     val LandscapeSplitGridSpacing = AxQsLayoutPadding.LANDSCAPE_SPLIT_GRID_SPACING_DP.dp
     val LandscapeHeaderContentSpacing = 8.dp
-    val LandscapeHeaderHeight: Dp
-        @Composable
-        get() {
-            val statusBarInset = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
-            val fontScale = LocalConfiguration.current.fontScale.coerceAtLeast(1f)
-            // The two-line carrier + status-icon header needs more room than the
-            // system status bar inset. The split QS toolbar must start below it.
-            return statusBarInset + 64.dp * fontScale
-        }
 }
 
 @Composable
