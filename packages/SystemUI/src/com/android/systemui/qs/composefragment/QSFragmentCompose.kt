@@ -40,7 +40,9 @@ import androidx.annotation.VisibleForTesting
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Arrangement.spacedBy
+import androidx.compose.foundation.layout.absolutePadding
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -87,6 +89,7 @@ import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.res.dimensionResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.CustomAccessibilityAction
@@ -948,6 +951,20 @@ constructor(
                         ) {
                             Element(Elements.QuickQuickSettingsAndMedia, Modifier.fillMaxWidth()) {
                                 if (stockQsStyle) {
+                                    // Both STL scenes are composed during expansion. Keep the
+                                    // standard compact grid out of the expanded grid's visual
+                                    // phase: only one stock tile surface is visible at a time.
+                                    Box(
+                                        modifier = Modifier.fillMaxWidth()
+                                            .graphicsLayer {
+                                                alpha = (1f -
+                                                    2f * viewModel.expansionState.progress)
+                                                    .coerceIn(0f, 1f)
+                                            }
+                                            .thenIf(
+                                                viewModel.expansionState.progress >= 0.5f
+                                            ) { Modifier.gesturesDisabled() },
+                                    ) {
                                     QuickQuickSettingsLayout(
                                         brightness = { StockBrightnessSlider() },
                                         tiles = {
@@ -975,6 +992,7 @@ constructor(
                                         },
                                         mediaInRow = viewModel.qqsMediaInRow,
                                     )
+                                    }
                                 } else {
                                     AxQsMixedGrid(
                                         viewModel = viewModel,
@@ -1046,6 +1064,46 @@ constructor(
                         },
                     )
                 }
+                if (stockQsStyle) {
+                    // The status overlay above STL is the *only* clock/network
+                    // header in both scenes. Place the expanded stock actions in
+                    // normal layout below it, never on top of the tiles.
+                    val cutout = WindowInsets.displayCutout.asPaddingValues()
+                    val layoutDirection = LocalLayoutDirection.current
+                    val sideMargin = qsHorizontalMargin()
+                    Row(
+                        modifier = Modifier.fillMaxWidth()
+                            .absolutePadding(
+                                left = maxOf(
+                                    sideMargin,
+                                    cutout.calculateLeftPadding(layoutDirection),
+                                ),
+                                right = maxOf(
+                                    sideMargin,
+                                    cutout.calculateRightPadding(layoutDirection),
+                                ),
+                            )
+                            .padding(bottom = 8.dp)
+                            .graphicsLayer {
+                                alpha = (2f * viewModel.expansionState.progress - 1f)
+                                    .coerceIn(0f, 1f)
+                            }
+                            .thenIf(!viewModel.isQsFullyExpanded) {
+                                Modifier.gesturesDisabled()
+                            },
+                        horizontalArrangement = Arrangement.End,
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        AxQsHeaderActions(
+                            viewModel = toolbarViewModel,
+                            isFullyVisible = {
+                                viewModel.isQsFullyExpanded && !viewModel.isEditing
+                            },
+                            editButtonProgress = { viewModel.expansionState.progress },
+                            showEdit = true,
+                        )
+                    }
+                }
                 Element(
                     Elements.QuickSettingsContent,
                     modifier = Modifier.weight(1f),
@@ -1100,6 +1158,13 @@ constructor(
                             // MistOS controls/grid remain intact in the other branch.
                             Column(
                                 modifier = Modifier.fillMaxSize()
+                                    .graphicsLayer {
+                                        alpha = (2f * viewModel.expansionState.progress - 1f)
+                                            .coerceIn(0f, 1f)
+                                    }
+                                    .thenIf(viewModel.expansionState.progress <= 0.5f) {
+                                        Modifier.gesturesDisabled()
+                                    }
                                     .verticalScroll(scrollState)
                                     .padding(horizontal = qsHorizontalMargin())
                                     .sysuiResTag(ResIdTags.quickSettingsPanel),
@@ -1130,16 +1195,6 @@ constructor(
                                         }
                                     },
                                     mediaInRow = viewModel.qsMediaInRow,
-                                )
-                                AxQsHeaderActions(
-                                    viewModel = toolbarViewModel,
-                                    isFullyVisible = {
-                                        viewModel.isQsFullyExpanded && !viewModel.isEditing
-                                    },
-                                    editButtonProgress = { viewModel.expansionState.progress },
-                                    showEdit = true,
-                                    modifier = Modifier.fillMaxWidth()
-                                        .padding(vertical = 12.dp),
                                 )
                             }
                         } else {
