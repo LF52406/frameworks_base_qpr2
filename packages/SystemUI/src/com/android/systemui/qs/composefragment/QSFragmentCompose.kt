@@ -302,7 +302,7 @@ constructor(
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         refreshQsStyle()
-        requireContext().contentResolver.registerContentObserver(
+        context?.contentResolver?.registerContentObserver(
             Settings.System.getUriFor("mist_qs_style"),
             false,
             qsStyleObserver,
