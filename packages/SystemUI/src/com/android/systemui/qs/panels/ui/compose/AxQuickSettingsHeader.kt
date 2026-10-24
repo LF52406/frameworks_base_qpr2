@@ -39,6 +39,9 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.displayCutout
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -67,6 +70,7 @@ import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.text.PlatformTextStyle
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -236,11 +240,17 @@ fun AxLandscapeQuickSettingsStatusRow(
     val foreground = MaterialTheme.colorScheme.onSurface
     BoxWithConstraints(modifier.fillMaxWidth()) {
         val showCarrier = maxWidth >= 530.dp
+        // Landscape phones can have a camera cutout on the LEFT or RIGHT.
+        // The status row must respect physical cutout insets on both sides.
+        val cutoutPadding = WindowInsets.displayCutout.asPaddingValues()
+        val layoutDirection = LocalLayoutDirection.current
+        val startPadding = maxOf(12.dp, cutoutPadding.calculateStartPadding(layoutDirection))
+        val endPadding = maxOf(12.dp, cutoutPadding.calculateEndPadding(layoutDirection))
         Row(
             modifier = Modifier
                 .fillMaxWidth()
                 .heightIn(min = 36.dp)
-                .padding(horizontal = 12.dp),
+                .padding(start = startPadding, end = endPadding),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Row(
