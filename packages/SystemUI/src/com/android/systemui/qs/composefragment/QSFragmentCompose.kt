@@ -955,6 +955,7 @@ constructor(
                                                 viewModel = viewModel.quickQuickSettingsViewModel,
                                                 listening = isListening,
                                                 modifier = Modifier.fillMaxWidth(),
+                                                ignoreIosMode = true,
                                             )
                                         },
                                         media = {
@@ -1110,6 +1111,7 @@ constructor(
                                             viewModel = viewModel.containerViewModel.tileGridViewModel,
                                             listening = isListening,
                                             modifier = Modifier.fillMaxWidth(),
+                                            ignoreIosMode = true,
                                         )
                                     },
                                     media = {
