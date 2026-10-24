@@ -175,6 +175,6 @@ interface IStorageManager {
      * and TRIM), reporting the real asynchronous completion to a privileged caller.
      * No file-level defragmentation is implied by the callback.
      */
-    @EnforcePermission("MOUNT_FORMAT_FILESYSTEMS")
+    @EnforcePermission("MOUNT_UNMOUNT_FILESYSTEMS")
     void runIdleMaintenanceWithCallback(IVoldTaskListener listener) = 100;
 }
