@@ -933,6 +933,8 @@ constructor(
     private fun ContentScope.QuickSettingsElement(modifier: Modifier = Modifier) {
         val qsExtraPadding = dimensionResource(R.dimen.qs_panel_padding_top)
         val overlayShadeHeader = useOverlayShadeHeader()
+        val landscape =
+            LocalConfiguration.current.orientation == Configuration.ORIENTATION_LANDSCAPE
         Column(
             modifier =
                 modifier.collapseExpandSemanticAction(
@@ -967,6 +969,16 @@ constructor(
                                     scrollState.scrollTo(0)
                                 }
                             }
+                    }
+                    // Always open the landscape control center on its large
+                    // controls, not at the last-scrolled circular tile page.
+                    LaunchedEffect(landscape) {
+                        if (landscape) {
+                            snapshotFlow { viewModel.isQsVisibleAndAnyShadeExpanded }
+                                .collect { visible ->
+                                    if (visible) scrollState.scrollTo(0)
+                                }
+                        }
                     }
 
                     val isListening: () -> Boolean =
