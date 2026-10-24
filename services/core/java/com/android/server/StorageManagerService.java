@@ -2832,7 +2832,7 @@ class StorageManagerService extends IStorageManager.Stub
      * Existing scheduled maintenance continues to use runIdleMaintenance().
      */
     @Override
-    @android.annotation.EnforcePermission(android.Manifest.permission.MOUNT_FORMAT_FILESYSTEMS)
+    @android.annotation.EnforcePermission(android.Manifest.permission.MOUNT_UNMOUNT_FILESYSTEMS)
     public void runIdleMaintenanceWithCallback(IVoldTaskListener listener) {
         super.runIdleMaintenanceWithCallback_enforcePermission();
         if (listener == null) {
