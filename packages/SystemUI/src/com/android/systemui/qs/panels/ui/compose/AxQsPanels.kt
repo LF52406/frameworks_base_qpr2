@@ -17,6 +17,7 @@
 package com.android.systemui.qs.panels.ui.compose
 
 import android.content.Intent
+import android.content.res.Configuration
 import android.database.ContentObserver
 import android.graphics.drawable.Drawable
 import android.net.Uri
@@ -68,6 +69,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.compositeOver
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.dimensionResource
@@ -207,19 +209,23 @@ internal fun <T> ContentScope.AxQS(
     tileLabel: @Composable (AxQsGridItem<T>) -> Unit,
 ) {
     val pagerState = rememberAxQsTilePagerState(tileItems, tileColumns, tileRows)
+    val landscape =
+        LocalConfiguration.current.orientation == Configuration.ORIENTATION_LANDSCAPE
     Column(
         modifier = modifier.fillMaxSize(),
         verticalArrangement = Arrangement.spacedBy(spacing),
     ) {
-        AxQsDateHeader(
-            toolbarViewModel = toolbarViewModel,
-            shadeHeaderViewModel = shadeHeaderViewModel,
-            showEdit = true,
-            showDate = showDate,
-            showWeather = showWeather,
-            isFullyVisible = isFullyVisible,
-            editButtonProgress = editButtonProgress,
-        )
+        if (!landscape) {
+            AxQsDateHeader(
+                toolbarViewModel = toolbarViewModel,
+                shadeHeaderViewModel = shadeHeaderViewModel,
+                showEdit = true,
+                showDate = showDate,
+                showWeather = showWeather,
+                isFullyVisible = isFullyVisible,
+                editButtonProgress = editButtonProgress,
+            )
+        }
         Column(
             modifier =
                 Modifier.weight(1f)
@@ -238,6 +244,19 @@ internal fun <T> ContentScope.AxQS(
                         squareCells = circleCells,
                         modifier = Modifier.fillMaxWidth(),
                         content = controlContent,
+                    )
+                }
+                if (landscape) {
+                    // Controls appear first at full height. Swiping up reveals the
+                    // toolbar and then the tile grid in the same scrollable panel.
+                    AxQsDateHeader(
+                        toolbarViewModel = toolbarViewModel,
+                        shadeHeaderViewModel = shadeHeaderViewModel,
+                        showEdit = true,
+                        showDate = showDate,
+                        showWeather = showWeather,
+                        isFullyVisible = isFullyVisible,
+                        editButtonProgress = editButtonProgress,
                     )
                 }
                 if (tileItems.isNotEmpty()) {
