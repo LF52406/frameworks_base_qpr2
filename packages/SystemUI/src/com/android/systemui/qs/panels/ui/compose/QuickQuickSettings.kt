@@ -49,6 +49,7 @@ fun ContentScope.QuickQuickSettings(
     viewModel: QuickQuickSettingsViewModel,
     modifier: Modifier = Modifier,
     listening: () -> Boolean,
+    ignoreIosMode: Boolean = false,
 ) {
     val columns = viewModel.columns
     val squishiness by viewModel.squishinessViewModel.squishiness.collectAsStateWithLifecycle()
@@ -82,7 +83,7 @@ fun ContentScope.QuickQuickSettings(
     }
 
     val allSizedTiles = viewModel.tileViewModels
-    val sizedTiles = if (iosPanelEnabled) {
+    val sizedTiles = if (iosPanelEnabled && !ignoreIosMode) {
         val filtered = viewModel.allCurrentSizedTiles.filter { it.tile.spec.spec !in setOf("internet", "wifi", "bt") }
         com.android.systemui.qs.panels.shared.model.splitInRowsSequence(filtered, columns)
             .firstOrNull() ?: emptyList()
