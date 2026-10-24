@@ -156,6 +156,7 @@ import com.android.systemui.qs.composefragment.ui.toEditMode
 import com.android.systemui.qs.composefragment.viewmodel.QSFragmentComposeViewModel
 import com.android.systemui.qs.panels.shared.model.QSFragmentComposeClippingTableLog
 import com.android.systemui.qs.panels.ui.compose.AxQuickSettingsHeader
+import com.android.systemui.qs.panels.ui.compose.AxLandscapeQuickSettingsStatusRow
 import com.android.systemui.qs.panels.ui.compose.AxQuickSettingsLayoutDefaults
 import com.android.systemui.qs.panels.ui.compose.EditMode
 import com.android.systemui.qs.panels.ui.compose.LocalAxQsExpansionProgress
@@ -955,6 +956,21 @@ constructor(
                             Modifier.height {
                                 qsExtraPadding.roundToPx()
                             }
+                    )
+                }
+                if (landscape) {
+                    // Keep status information on the expanded control center
+                    // without restoring the large two-line QQS overlay or the
+                    // fixed edit/settings/overflow toolbar. The row participates
+                    // in measurement, so it cannot cover Wi-Fi/media/tiles.
+                    // During expansion the old overlay fades OUT while this
+                    // independent compact row fades IN.
+                    AxLandscapeQuickSettingsStatusRow(
+                        viewModel = viewModel.containerViewModel.shadeHeaderViewModel,
+                        isTransitioning = viewModel.expansionState.progress < 1f,
+                        modifier = Modifier.graphicsLayer {
+                            alpha = viewModel.expansionState.progress.coerceIn(0f, 1f)
+                        },
                     )
                 }
                 Element(
