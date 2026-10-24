@@ -203,6 +203,7 @@ import com.android.systemui.qs.composefragment.ui.shouldComposeLiveAxQs
 import com.android.systemui.qs.composefragment.ui.toAxEditMode
 import com.android.systemui.qs.panels.ui.compose.AxQsControlPreview
 import com.android.systemui.qs.panels.ui.compose.AxQsMixedGrid
+import com.android.systemui.qs.panels.ui.compose.AxQsHeaderActions
 import com.android.systemui.qs.panels.domain.interactor.EditTilesResetInteractor
 import com.android.systemui.qs.panels.ui.edit.AxQsEditUi
 import com.android.systemui.qs.panels.ui.viewmodel.AxMediaViewModel
@@ -262,6 +263,24 @@ constructor(
     private val qqsPositionOnRoot = Rect()
     private val composeViewPositionOnScreen = Rect()
     private val scrollState = ScrollState(0)
+    // 0 (including unset) = MistOS; 1 = standard Android 17 QS.
+    private var stockQsStyle by mutableStateOf(false)
+    private val qsStyleObserver = object : ContentObserver(Handler(Looper.getMainLooper())) {
+        override fun onChange(selfChange: Boolean) {
+            refreshQsStyle()
+        }
+    }
+
+    private fun refreshQsStyle() {
+        val resolver = context?.contentResolver ?: return
+        stockQsStyle = try {
+            Settings.System.getIntForUser(
+                resolver, "mist_qs_style", 0, UserHandle.USER_CURRENT
+            ) == 1
+        } catch (_: RuntimeException) {
+            false
+        }
+    }
     private val locationTemp = IntArray(2)
     private var bottomBarPositionInRoot = IntRect(IntOffset(0, 0), 0)
     private var bottomContentPadding by mutableIntStateOf(0)
@@ -272,10 +291,23 @@ constructor(
     override fun onStart() {
         super.onStart()
         registerDumpable()
+        refreshQsStyle()
+    }
+
+    override fun onDestroy() {
+        context?.contentResolver?.unregisterContentObserver(qsStyleObserver)
+        super.onDestroy()
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        refreshQsStyle()
+        requireContext().contentResolver.registerContentObserver(
+            Settings.System.getUriFor("mist_qs_style"),
+            false,
+            qsStyleObserver,
+            UserHandle.USER_ALL,
+        )
 
         viewModel = qsFragmentComposeViewModelFactory.create(lifecycleScope)
 
@@ -429,6 +461,12 @@ constructor(
                 deferTransitionProgress = true,
             )
 
+        // Switching style keeps QS and tile models, but resets the old scroll/edit position.
+        LaunchedEffect(stockQsStyle) {
+            scrollState.scrollTo(0)
+            viewModel.containerViewModel.editModeViewModel.stopEditing()
+        }
+
         val showQuickSettings = viewModel.isQsVisibleAndAnyShadeExpanded
         LaunchedEffect(showQuickSettings) {
             snapshotFlow {
@@ -537,7 +575,8 @@ constructor(
             val landscape =
                 LocalConfiguration.current.orientation == Configuration.ORIENTATION_LANDSCAPE
             val qsExpansion = viewModel.expansionState.progress.coerceIn(0f, 1f)
-            val headerExpansionAlpha = if (landscape) 1f - qsExpansion else 1f
+            val headerExpansionAlpha =
+                if (landscape && !stockQsStyle) 1f - qsExpansion else 1f
             if (
                 useOverlayShadeHeader() &&
                     sceneState.shouldComposeLiveAxQs() &&
@@ -908,19 +947,48 @@ constructor(
                                 )
                         ) {
                             Element(Elements.QuickQuickSettingsAndMedia, Modifier.fillMaxWidth()) {
-                                AxQsMixedGrid(
-                                    viewModel = viewModel,
-                                    toolbarViewModel = toolbarViewModel,
-                                    axQsViewModel = axQsViewModel,
-                                    mediaViewModel = axMediaViewModel,
-                                    qqs = true,
-                                    listening = isListening,
-                                    brightnessSliderViewModel =
-                                        viewModel.containerViewModel.brightnessSliderViewModel,
-                                    volumeSliderViewModel = volumeSliderViewModel,
-                                    scrollState = scrollState,
-                                    modifier = Modifier.fillMaxWidth(),
-                                )
+                                if (stockQsStyle) {
+                                    QuickQuickSettingsLayout(
+                                        brightness = { StockBrightnessSlider() },
+                                        tiles = {
+                                            this@QuickQuickSettingsElement.QuickQuickSettings(
+                                                viewModel = viewModel.quickQuickSettingsViewModel,
+                                                listening = isListening,
+                                                modifier = Modifier.fillMaxWidth(),
+                                            )
+                                        },
+                                        media = {
+                                            if (viewModel.qqsMediaVisible) {
+                                                this@QuickQuickSettingsElement.MediaObject(
+                                                    mediaHost = viewModel.qqsMediaHost,
+                                                    mediaViewModelFactory = viewModel.mediaViewModelFactory,
+                                                    mediaPresentationStyle = MediaPresentationStyle.Compact,
+                                                    onSwipeToDismiss = viewModel::onMediaSwipeToDismiss,
+                                                    behavior = viewModel.qqsMediaUiBehavior,
+                                                    visible = { viewModel.qqsMediaVisible },
+                                                    location = Media.Location.QS,
+                                                    expansion = { viewModel.expansionState.progress },
+                                                    modifier = Modifier.fillMaxWidth(),
+                                                )
+                                            }
+                                        },
+                                        mediaInRow = viewModel.qqsMediaInRow,
+                                    )
+                                } else {
+                                    AxQsMixedGrid(
+                                        viewModel = viewModel,
+                                        toolbarViewModel = toolbarViewModel,
+                                        axQsViewModel = axQsViewModel,
+                                        mediaViewModel = axMediaViewModel,
+                                        qqs = true,
+                                        listening = isListening,
+                                        brightnessSliderViewModel =
+                                            viewModel.containerViewModel.brightnessSliderViewModel,
+                                        volumeSliderViewModel = volumeSliderViewModel,
+                                        scrollState = scrollState,
+                                        modifier = Modifier.fillMaxWidth(),
+                                    )
+                                }
                             }
                         }
                     }
@@ -947,7 +1015,11 @@ constructor(
                     Spacer(
                         modifier =
                             Modifier.requiredHeight(
-                                expandedQuickSettingsContentTopPadding()
+                                if (landscape && stockQsStyle) {
+                                    quickSettingsContentTopPadding()
+                                } else {
+                                    expandedQuickSettingsContentTopPadding()
+                                }
                             )
                     )
                 } else {
@@ -958,7 +1030,7 @@ constructor(
                             }
                     )
                 }
-                if (landscape) {
+                if (landscape && !stockQsStyle) {
                     // Keep status information on the expanded control center
                     // without restoring the large two-line QQS overlay or the
                     // fixed edit/settings/overflow toolbar. The row participates
@@ -1022,26 +1094,89 @@ constructor(
                                 .padding(bottom = 8.dp)
                                 .sysuiResTag(ResIdTags.qsScroll)
                     ) {
-                        AxQsMixedGrid(
-                            viewModel = viewModel,
-                            toolbarViewModel = toolbarViewModel,
-                            axQsViewModel = axQsViewModel,
-                            mediaViewModel = axMediaViewModel,
-                            qqs = false,
-                            listening = isListening,
-                            brightnessSliderViewModel =
-                                viewModel.containerViewModel.brightnessSliderViewModel,
-                            volumeSliderViewModel = volumeSliderViewModel,
-                            scrollState = scrollState,
-                            modifier =
-                                Modifier.fillMaxSize()
-                                    .sysuiResTag(ResIdTags.quickSettingsPanel)
-                                    .graphicsLayer {},
-                        )
+                        if (stockQsStyle) {
+                            // AOSP's own tile grid, brightness and media layouts. The
+                            // MistOS controls/grid remain intact in the other branch.
+                            Column(
+                                modifier = Modifier.fillMaxSize()
+                                    .verticalScroll(scrollState)
+                                    .padding(horizontal = qsHorizontalMargin())
+                                    .sysuiResTag(ResIdTags.quickSettingsPanel),
+                            ) {
+                                QuickSettingsLayout(
+                                    brightness = { StockBrightnessSlider() },
+                                    tiles = {
+                                        this@QuickSettingsElement.TileGrid(
+                                            viewModel = viewModel.containerViewModel.tileGridViewModel,
+                                            listening = isListening,
+                                            modifier = Modifier.fillMaxWidth(),
+                                        )
+                                    },
+                                    media = {
+                                        if (viewModel.qsMediaVisible) {
+                                            this@QuickSettingsElement.MediaObject(
+                                                mediaHost = viewModel.qsMediaHost,
+                                                mediaViewModelFactory = viewModel.mediaViewModelFactory,
+                                                mediaPresentationStyle = MediaPresentationStyle.Default,
+                                                onSwipeToDismiss = viewModel::onMediaSwipeToDismiss,
+                                                behavior = viewModel.qsMediaUiBehavior,
+                                                visible = { viewModel.qsMediaVisible },
+                                                location = Media.Location.QS,
+                                                expansion = { viewModel.expansionState.progress },
+                                                modifier = Modifier.fillMaxWidth(),
+                                            )
+                                        }
+                                    },
+                                    mediaInRow = viewModel.qsMediaInRow,
+                                )
+                                AxQsHeaderActions(
+                                    viewModel = toolbarViewModel,
+                                    isFullyVisible = {
+                                        viewModel.isQsFullyExpanded && !viewModel.isEditing
+                                    },
+                                    editButtonProgress = { viewModel.expansionState.progress },
+                                    showEdit = true,
+                                    modifier = Modifier.fillMaxWidth()
+                                        .padding(vertical = 12.dp),
+                                )
+                            }
+                        } else {
+                            AxQsMixedGrid(
+                                viewModel = viewModel,
+                                toolbarViewModel = toolbarViewModel,
+                                axQsViewModel = axQsViewModel,
+                                mediaViewModel = axMediaViewModel,
+                                qqs = false,
+                                listening = isListening,
+                                brightnessSliderViewModel =
+                                    viewModel.containerViewModel.brightnessSliderViewModel,
+                                volumeSliderViewModel = volumeSliderViewModel,
+                                scrollState = scrollState,
+                                modifier =
+                                    Modifier.fillMaxSize()
+                                        .sysuiResTag(ResIdTags.quickSettingsPanel)
+                                        .graphicsLayer {},
+                            )
+                        }
                     }
                 }
             }
             Spacer(Modifier.height { bottomContentPadding }.fillMaxWidth())
+        }
+    }
+
+    @Composable
+    private fun StockBrightnessSlider() {
+        AlwaysDarkMode {
+            BrightnessSliderContainer(
+                viewModel = viewModel.containerViewModel.brightnessSliderViewModel,
+                containerColors =
+                    ContainerColors(
+                        Color.Transparent,
+                        ContainerColors.defaultContainerColor,
+                    ),
+                modifier = Modifier.fillMaxWidth(),
+            )
         }
     }
 
