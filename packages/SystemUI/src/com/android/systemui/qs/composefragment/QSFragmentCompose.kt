@@ -1085,10 +1085,11 @@ constructor(
                             )
                             .padding(bottom = 8.dp)
                             .graphicsLayer {
-                                alpha = (2f * viewModel.expansionState.progress - 1f)
-                                    .coerceIn(0f, 1f)
+                                alpha = if (viewModel.isEditing) 0f else
+                                    (2f * viewModel.expansionState.progress - 1f)
+                                        .coerceIn(0f, 1f)
                             }
-                            .thenIf(!viewModel.isQsFullyExpanded) {
+                            .thenIf(!viewModel.isQsFullyExpanded || viewModel.isEditing) {
                                 Modifier.gesturesDisabled()
                             },
                         horizontalArrangement = Arrangement.End,
