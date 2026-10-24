@@ -1868,10 +1868,13 @@ fun QuickSettingsLayout(
             }
         } else {
             tiles()
-            if (showSlider != 0 && !sliderAtTop) {
-                brightness()
-            }
             media()
+        }
+
+        // Preserve the selected below-tiles brightness position in landscape
+        // when tiles and media are displayed side by side.
+        if (showSlider != 0 && !sliderAtTop) {
+            brightness()
         }
     }
 }
