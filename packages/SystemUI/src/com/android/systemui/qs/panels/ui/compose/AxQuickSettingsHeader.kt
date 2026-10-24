@@ -244,13 +244,13 @@ fun AxLandscapeQuickSettingsStatusRow(
         // The status row must respect physical cutout insets on both sides.
         val cutoutPadding = WindowInsets.displayCutout.asPaddingValues()
         val layoutDirection = LocalLayoutDirection.current
-        val startPadding = maxOf(12.dp, cutoutPadding.calculateStartPadding(layoutDirection))
-        val endPadding = maxOf(12.dp, cutoutPadding.calculateEndPadding(layoutDirection))
+        val leftPadding = maxOf(12.dp, cutoutPadding.calculateLeftPadding(layoutDirection))
+        val rightPadding = maxOf(12.dp, cutoutPadding.calculateRightPadding(layoutDirection))
         Row(
             modifier = Modifier
                 .fillMaxWidth()
                 .heightIn(min = 36.dp)
-                .padding(start = startPadding, end = endPadding),
+                .padding(left = leftPadding, right = rightPadding),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Row(
