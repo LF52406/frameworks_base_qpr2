@@ -531,14 +531,25 @@ constructor(
 
             val editProgress = sceneState.editModeTransitionProgress()
             val headerAlpha = (1f - editProgress).coerceIn(0f, 1f)
-            if (useOverlayShadeHeader() && sceneState.shouldComposeLiveAxQs() && headerAlpha > 0f) {
+            // In landscape the expanded control center gets the full vertical space.
+            // Keep the overlay header for collapsed QQS, then fade it away as QS expands.
+            val landscape =
+                LocalConfiguration.current.orientation == Configuration.ORIENTATION_LANDSCAPE
+            val qsExpansion = viewModel.expansionState.progress.coerceIn(0f, 1f)
+            val headerExpansionAlpha = if (landscape) 1f - qsExpansion else 1f
+            if (
+                useOverlayShadeHeader() &&
+                    sceneState.shouldComposeLiveAxQs() &&
+                    headerAlpha > 0f &&
+                    headerExpansionAlpha > 0.001f
+            ) {
                 QuickSettingsStatusOverlayHeader(
                     headerViewModel = viewModel.containerViewModel.shadeHeaderViewModel,
                     isTransitioning =
                         sceneState.isTransitioningBetween(QuickQuickSettings, QuickSettings),
                     modifier =
                         Modifier.graphicsLayer {
-                            alpha = headerAlpha
+                            alpha = headerAlpha * headerExpansionAlpha
                             scaleX = 1f - (editProgress * 0.08f)
                             scaleY = 1f - (editProgress * 0.08f)
                             translationY = -editProgress * 40f
@@ -933,7 +944,7 @@ constructor(
                     Spacer(
                         modifier =
                             Modifier.requiredHeight(
-                                quickSettingsContentTopPadding()
+                                expandedQuickSettingsContentTopPadding()
                             )
                     )
                 } else {
@@ -1126,6 +1137,18 @@ constructor(
                         }
                     },
         )
+    }
+
+    @Composable
+    private fun expandedQuickSettingsContentTopPadding(): Dp {
+        if (LocalConfiguration.current.orientation == Configuration.ORIENTATION_LANDSCAPE) {
+            // Expanded landscape QS has no fixed overlay header. Retain only the
+            // real system/cutout inset so tiles are not drawn under system UI.
+            val statusBarTop = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
+            val cutoutTop = WindowInsets.displayCutout.asPaddingValues().calculateTopPadding()
+            return maxOf(statusBarTop, cutoutTop) + 8.dp
+        }
+        return quickSettingsContentTopPadding()
     }
 
     @Composable
