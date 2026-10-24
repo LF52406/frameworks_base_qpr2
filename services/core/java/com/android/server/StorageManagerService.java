@@ -2825,6 +2825,56 @@ class StorageManagerService extends IStorageManager.Stub
         runIdleMaint(null);
     }
 
+    /**
+     * Privileged manual storage refresh. Forward vold's real completion instead
+     * of reporting success as soon as the job has been queued.
+     *
+     * Existing scheduled maintenance continues to use runIdleMaintenance().
+     */
+    @Override
+    @android.annotation.EnforcePermission(android.Manifest.permission.MOUNT_FORMAT_FILESYSTEMS)
+    public void runIdleMaintenanceWithCallback(IVoldTaskListener listener) {
+        super.runIdleMaintenanceWithCallback_enforcePermission();
+        if (listener == null) {
+            throw new IllegalArgumentException("listener must not be null");
+        }
+
+        try {
+            if (needsCheckpoint() && supportsBlockCheckpoint()) {
+                Slog.w(TAG, "Storage refresh skipped: block checkpoint in progress");
+                listener.onFinished(-1, new PersistableBundle());
+                return;
+            }
+
+            mVold.runIdleMaint(mNeedGC, new IVoldTaskListener.Stub() {
+                @Override
+                public void onStatus(int status, PersistableBundle extras) {
+                    try {
+                        listener.onStatus(status, extras);
+                    } catch (RemoteException e) {
+                        Slog.w(TAG, "Storage refresh listener is gone", e);
+                    }
+                }
+
+                @Override
+                public void onFinished(int status, PersistableBundle extras) {
+                    try {
+                        listener.onFinished(status, extras);
+                    } catch (RemoteException e) {
+                        Slog.w(TAG, "Storage refresh listener is gone", e);
+                    }
+                }
+            });
+        } catch (Exception e) {
+            Slog.e(TAG, "Unable to start manual storage refresh", e);
+            try {
+                listener.onFinished(-1, new PersistableBundle());
+            } catch (RemoteException ignored) {
+                // The invoking process is no longer alive.
+            }
+        }
+    }
+
     void abortIdleMaint(Runnable callback) {
         enforcePermission(android.Manifest.permission.MOUNT_FORMAT_FILESYSTEMS);
 
