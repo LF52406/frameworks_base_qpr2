@@ -32,6 +32,7 @@ import androidx.compose.foundation.clipScrollableContainer
 import androidx.compose.foundation.gestures.Orientation
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
@@ -226,60 +227,75 @@ internal fun <T> ContentScope.AxQS(
                 editButtonProgress = editButtonProgress,
             )
         }
-        Column(
-            modifier =
-                Modifier.weight(1f)
-                    .fillMaxWidth()
-                    .clipScrollableContainer(Orientation.Vertical)
-                    .verticalScroll(scrollState, overscrollEffect = null),
-        ) {
-            Column(verticalArrangement = Arrangement.spacedBy(spacing)) {
-                if (controlItems.isNotEmpty()) {
-                    AxQsGrid(
-                        items = controlItems,
-                        columns = controlColumns,
-                        rowHeight = rowHeight,
-                        spacing = spacing,
-                        maxRows = controlRows,
-                        squareCells = circleCells,
-                        modifier = Modifier.fillMaxWidth(),
-                        content = controlContent,
-                    )
-                }
-                if (landscape) {
-                    // Controls appear first at full height. Swiping up reveals the
-                    // toolbar and then the tile grid in the same scrollable panel.
-                    AxQsDateHeader(
-                        toolbarViewModel = toolbarViewModel,
-                        shadeHeaderViewModel = shadeHeaderViewModel,
-                        showEdit = true,
-                        showDate = showDate,
-                        showWeather = showWeather,
-                        isFullyVisible = isFullyVisible,
-                        editButtonProgress = editButtonProgress,
-                    )
-                }
-                if (tileItems.isNotEmpty()) {
-                    val expansionProgress = LocalAxQsExpansionProgress.current
-                    Column(
-                        modifier = Modifier.axQuickSettingsSceneMotion(expansionProgress)
-                    ) {
-                        AxQsTileGrid(
-                            items = tileItems,
-                            columns = tileColumns,
-                            rows = tileRows,
-                            spacing = spacing,
-                            showLabels = showTileLabels,
-                            circleCells = circleCells,
-                            pagerState = pagerState,
-                            modifier = Modifier.fillMaxWidth(),
-                            content = tileContent,
-                            label = tileLabel,
+
+        BoxWithConstraints(modifier = Modifier.weight(1f).fillMaxWidth()) {
+            val viewportHeight = maxHeight
+            Column(
+                modifier =
+                    Modifier.fillMaxSize()
+                        .clipScrollableContainer(Orientation.Vertical)
+                        .verticalScroll(scrollState, overscrollEffect = null),
+            ) {
+                Column(verticalArrangement = Arrangement.spacedBy(spacing)) {
+                    if (controlItems.isNotEmpty()) {
+                        // Do not expose the toolbar until the user scrolls up.
+                        // Keep the controls section at least a full viewport high
+                        // without stretching individual QS controls and sliders.
+                        Box(
+                            modifier =
+                                if (landscape) {
+                                    Modifier.fillMaxWidth().heightIn(min = viewportHeight)
+                                } else {
+                                    Modifier.fillMaxWidth()
+                                }
+                        ) {
+                            AxQsGrid(
+                                items = controlItems,
+                                columns = controlColumns,
+                                rowHeight = rowHeight,
+                                spacing = spacing,
+                                maxRows = controlRows,
+                                squareCells = circleCells,
+                                modifier = Modifier.fillMaxWidth(),
+                                content = controlContent,
+                            )
+                        }
+                    }
+                    if (landscape) {
+                        // Toolbar and circular tiles follow the full control center.
+                        // Both remain reachable with the existing upward swipe.
+                        AxQsDateHeader(
+                            toolbarViewModel = toolbarViewModel,
+                            shadeHeaderViewModel = shadeHeaderViewModel,
+                            showEdit = true,
+                            showDate = showDate,
+                            showWeather = showWeather,
+                            isFullyVisible = isFullyVisible,
+                            editButtonProgress = editButtonProgress,
                         )
-                        AxQsPagerIndicator(
-                            pagerState = pagerState,
-                            modifier = Modifier.fillMaxWidth().padding(top = spacing),
-                        )
+                    }
+                    if (tileItems.isNotEmpty()) {
+                        val expansionProgress = LocalAxQsExpansionProgress.current
+                        Column(
+                            modifier = Modifier.axQuickSettingsSceneMotion(expansionProgress)
+                        ) {
+                            AxQsTileGrid(
+                                items = tileItems,
+                                columns = tileColumns,
+                                rows = tileRows,
+                                spacing = spacing,
+                                showLabels = showTileLabels,
+                                circleCells = circleCells,
+                                pagerState = pagerState,
+                                modifier = Modifier.fillMaxWidth(),
+                                content = tileContent,
+                                label = tileLabel,
+                            )
+                            AxQsPagerIndicator(
+                                pagerState = pagerState,
+                                modifier = Modifier.fillMaxWidth().padding(top = spacing),
+                            )
+                        }
                     }
                 }
             }
