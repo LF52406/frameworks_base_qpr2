@@ -965,33 +965,33 @@ constructor(
                                                 viewModel.expansionState.progress >= 0.5f
                                             ) { Modifier.gesturesDisabled() },
                                     ) {
-                                    QuickQuickSettingsLayout(
-                                        brightness = { StockBrightnessSlider() },
-                                        tiles = {
-                                            this@QuickQuickSettingsElement.QuickQuickSettings(
-                                                viewModel = viewModel.quickQuickSettingsViewModel,
-                                                listening = isListening,
-                                                modifier = Modifier.fillMaxWidth(),
-                                                ignoreIosMode = true,
-                                            )
-                                        },
-                                        media = {
-                                            if (viewModel.qqsMediaVisible) {
-                                                this@QuickQuickSettingsElement.MediaObject(
-                                                    mediaHost = viewModel.qqsMediaHost,
-                                                    mediaViewModelFactory = viewModel.mediaViewModelFactory,
-                                                    mediaPresentationStyle = MediaPresentationStyle.Compact,
-                                                    onSwipeToDismiss = viewModel::onMediaSwipeToDismiss,
-                                                    behavior = viewModel.qqsMediaUiBehavior,
-                                                    visible = { viewModel.qqsMediaVisible },
-                                                    location = Media.Location.QS,
-                                                    expansion = { viewModel.expansionState.progress },
+                                        QuickQuickSettingsLayout(
+                                            brightness = { StockBrightnessSlider() },
+                                            tiles = {
+                                                this@QuickQuickSettingsElement.QuickQuickSettings(
+                                                    viewModel = viewModel.quickQuickSettingsViewModel,
+                                                    listening = isListening,
                                                     modifier = Modifier.fillMaxWidth(),
+                                                    ignoreIosMode = true,
                                                 )
-                                            }
-                                        },
-                                        mediaInRow = viewModel.qqsMediaInRow,
-                                    )
+                                            },
+                                            media = {
+                                                if (viewModel.qqsMediaVisible) {
+                                                    this@QuickQuickSettingsElement.MediaObject(
+                                                        mediaHost = viewModel.qqsMediaHost,
+                                                        mediaViewModelFactory = viewModel.mediaViewModelFactory,
+                                                        mediaPresentationStyle = MediaPresentationStyle.Compact,
+                                                        onSwipeToDismiss = viewModel::onMediaSwipeToDismiss,
+                                                        behavior = viewModel.qqsMediaUiBehavior,
+                                                        visible = { viewModel.qqsMediaVisible },
+                                                        location = Media.Location.QS,
+                                                        expansion = { viewModel.expansionState.progress },
+                                                        modifier = Modifier.fillMaxWidth(),
+                                                    )
+                                                }
+                                            },
+                                            mediaInRow = viewModel.qqsMediaInRow,
+                                        )
                                     }
                                 } else {
                                     AxQsMixedGrid(
