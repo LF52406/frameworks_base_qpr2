@@ -39,6 +39,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.absolutePadding
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.displayCutout
@@ -250,7 +251,7 @@ fun AxLandscapeQuickSettingsStatusRow(
             modifier = Modifier
                 .fillMaxWidth()
                 .heightIn(min = 36.dp)
-                .padding(left = leftPadding, right = rightPadding),
+                .absolutePadding(left = leftPadding, right = rightPadding),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Row(
