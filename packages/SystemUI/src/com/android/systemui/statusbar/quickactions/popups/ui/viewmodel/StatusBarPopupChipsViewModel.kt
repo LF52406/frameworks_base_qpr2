@@ -32,6 +32,7 @@ import com.android.systemui.dagger.qualifiers.Application
 import com.android.systemui.keyguard.domain.interactor.KeyguardTransitionInteractor
 import com.android.systemui.keyguard.shared.model.KeyguardState
 import com.android.systemui.lifecycle.HydratedActivatable
+import com.android.systemui.shade.domain.interactor.ShadeInteractor
 import com.android.systemui.statusbar.pipeline.shared.domain.interactor.StatusBarVisibilityInteractor
 import com.android.systemui.statusbar.quickactions.alarm.ui.viewmodel.AlarmPopupChipViewModel
 import com.android.systemui.statusbar.quickactions.assistant.StatusBarAssistantIcon
@@ -72,6 +73,7 @@ constructor(
      private val keyguardTransitionInteractor: KeyguardTransitionInteractor,
     private val quickActionsInteractor: QuickActionsInteractor,
     private val statusBarVisibilityInteractor: StatusBarVisibilityInteractor,
+    private val shadeInteractor: ShadeInteractor,
     mediaControlChipFactory: MediaControlChipViewModel.Factory,
     avControlsChipFactory: AvControlsChipViewModel.Factory,
     shareScreenPrivacyIndicatorFactory: ShareScreenPrivacyIndicatorViewModel.Factory,
@@ -111,6 +113,12 @@ constructor(
         }
 
     private var isOnLockscreen by mutableStateOf(false)
+
+    // A media quick-action popup is a separate top-level window. Never display
+    // it above the notification shade or either QS style: they already contain
+    // media controls. Observe shade + QS together, including landscape.
+    private val isAnyShadeExpanded by
+        shadeInteractor.isAnyExpanded.hydratedStateOf(traceName = "isAnyShadeExpanded")
 
     /** The ID of the current chip that is currently active, or `null` if no chip is active. */
     private val currentActiveQuickActionId: QuickActionChipId?
@@ -172,14 +180,19 @@ constructor(
         candidateChips
             .filterIsInstance<QuickActionChipModel.PopupChip>()
             .map { chip ->
+                val isMedia = chip.chipId == QuickActionChipId.MediaControl
+                val popupAllowed = !isMedia || !isAnyShadeExpanded
                 val isShown =
-                    (chip.chipId == currentActiveQuickActionId) ||
-                        (chip.chipId == currentShownPopupChipId)
+                    popupAllowed &&
+                        ((chip.chipId == currentActiveQuickActionId) ||
+                            (chip.chipId == currentShownPopupChipId))
                 chip.copy(
                     isPopupShown = isShown,
                     showPopup = {
-                        Log.d(TAG, "DynamicIsland: showPopup invoked for ${chip.chipId}")
-                        currentShownPopupChipId = chip.chipId
+                        if (popupAllowed) {
+                            Log.d(TAG, "DynamicIsland: showPopup invoked for ${chip.chipId}")
+                            currentShownPopupChipId = chip.chipId
+                        }
                     },
                     hidePopup = {
                         Log.d(TAG, "DynamicIsland: hidePopup invoked for ${chip.chipId}")
@@ -189,19 +202,21 @@ constructor(
                         quickActionsInteractor.close()
                     },
                     togglePopup = { _, anchorBounds ->
-                        chip.popupViewModelFactory?.let { factory ->
-                            quickActionsInteractor.toggle(
-                                QuickActionPanelModel(
-                                    chipId = chip.chipId,
-                                    anchorBounds = anchorBounds,
-                                    panelContentViewModelFactory = factory,
+                        if (popupAllowed) {
+                            chip.popupViewModelFactory?.let { factory ->
+                                quickActionsInteractor.toggle(
+                                    QuickActionPanelModel(
+                                        chipId = chip.chipId,
+                                        anchorBounds = anchorBounds,
+                                        panelContentViewModelFactory = factory,
+                                    )
                                 )
-                            )
-                        } ?: run {
-                            if (currentShownPopupChipId == chip.chipId) {
-                                currentShownPopupChipId = null
-                            } else {
-                                currentShownPopupChipId = chip.chipId
+                            } ?: run {
+                                if (currentShownPopupChipId == chip.chipId) {
+                                    currentShownPopupChipId = null
+                                } else {
+                                    currentShownPopupChipId = chip.chipId
+                                }
                             }
                         }
                     },
@@ -246,6 +261,23 @@ constructor(
                 launch { assistantIcon.activate() }
             }
             launch { imeIndicatorChip.activate() }
+
+            // If the user expands the shade while a media popup is already
+            // open, dismiss that *popup* immediately. Do not clear any media
+            // session or touch the MistOS / stock QS media controls.
+            launch {
+                shadeInteractor.isAnyExpanded.collectLatest { expanded ->
+                    if (expanded) {
+                        if (currentShownPopupChipId == QuickActionChipId.MediaControl) {
+                            currentShownPopupChipId = null
+                        }
+                        if (quickActionsInteractor.activePanel?.chipId ==
+                                QuickActionChipId.MediaControl) {
+                            quickActionsInteractor.close()
+                        }
+                    }
+                }
+            }
 
             launch {
                 snapshotFlow {
