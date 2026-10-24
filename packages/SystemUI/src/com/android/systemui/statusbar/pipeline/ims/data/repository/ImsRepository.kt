@@ -65,12 +65,12 @@ class ImsRepositoryImpl(
         callbackFlow {
             val registrationCallback = object : RegistrationCallback() {
                 override fun onRegistered(attributes: ImsRegistrationAttributes) {
-                    Log.i(TAG, "IMS registered subId=$" + "{subId} tech=$" + "{attributes.registrationTechnology}")
+                    Log.i(TAG, "IMS registered subId=${subId} tech=${attributes.registrationTechnology}")
                     trySend(CallbackEvent.OnImsRegistrationChanged(true, attributes))
                 }
 
                 override fun onUnregistered(info: ImsReasonInfo) {
-                    Log.i(TAG, "IMS unregistered subId=$" + "{subId} reason=$" + "{info.code}")
+                    Log.i(TAG, "IMS unregistered subId=${subId} reason=${info.code}")
                     trySend(CallbackEvent.OnImsRegistrationChanged(false, null))
                 }
             }
@@ -80,7 +80,7 @@ class ImsRepositoryImpl(
                 ) {
                     Log.i(
                         TAG,
-                        "IMS capabilities subId=$" + "{subId} voice=$" + "{capabilities.isCapable(MmTelFeature.MmTelCapabilities.CAPABILITY_TYPE_VOICE)}"
+                        "IMS capabilities subId=${subId} voice=${capabilities.isCapable(MmTelFeature.MmTelCapabilities.CAPABILITY_TYPE_VOICE)}"
                     )
                     trySend(CallbackEvent.OnImsCapabilitiesStatusChanged(capabilities))
                 }
@@ -97,13 +97,13 @@ class ImsRepositoryImpl(
                     } catch (e: Exception) {
                         // Without closing the flow a failed registration leaves the icon
                         // permanently stuck on its initial false state.
-                        Log.e(TAG, "Failed to attach MMTEL callbacks subId=$" + "{subId}", e)
+                        Log.e(TAG, "Failed to attach MMTEL callbacks subId=${subId}", e)
                         close(e)
                     }
                 }
 
                 override fun onUnavailable(reason: Int) {
-                    Log.i(TAG, "IMS unavailable subId=$" + "{subId} reason=$" + "{reason}")
+                    Log.i(TAG, "IMS unavailable subId=${subId} reason=${reason}")
                     // Drop stale LTE voice state while telephony disconnects.
                     trySend(CallbackEvent.OnImsUnavailable)
                     runCatching {
@@ -117,7 +117,7 @@ class ImsRepositoryImpl(
                 override fun onError() {
                     // Android deregisters ImsStateCallback after a telephony crash.
                     // Recreate the complete subscription instead of waiting forever.
-                    Log.w(TAG, "IMS state callback lost subId=$" + "{subId}; restarting")
+                    Log.w(TAG, "IMS state callback lost subId=${subId}; restarting")
                     close(ImsCallbackRestartException(subId))
                 }
             }
@@ -141,13 +141,13 @@ class ImsRepositoryImpl(
                     (cause is ImsException &&
                         cause.code == ImsException.CODE_ERROR_SERVICE_UNAVAILABLE)
                 if (recoverable) {
-                    Log.w(TAG, "Retrying IMS callbacks subId=$" + "{subId}", cause)
+                    Log.w(TAG, "Retrying IMS callbacks subId=${subId}", cause)
                     delay(1000)
                 }
                 recoverable
             }
             .catch { cause ->
-                Log.e(TAG, "IMS callback stream failed subId=$" + "{subId}", cause)
+                Log.e(TAG, "IMS callback stream failed subId=${subId}", cause)
                 emit(initial)
             }
             .stateIn(scope = scope, started = SharingStarted.WhileSubscribed(), initial)
@@ -199,7 +199,7 @@ class ImsRepositoryImpl(
 }
 
 private class ImsCallbackRestartException(subId: Int) :
-    RuntimeException("IMS callback needs re-registration for subId=$" + "{subId}")
+    RuntimeException("IMS callback needs re-registration for subId=${subId}")
 
 sealed interface CallbackEvent {
     /** Clears registration and capabilities when the MMTEL service becomes unavailable. */
