@@ -1218,6 +1218,16 @@ constructor(
 
     @Composable
     private fun EditModeElement(modifier: Modifier = Modifier) {
+        if (stockQsStyle) {
+            // Stock editor modifies the real AOSP CurrentTilesInteractor tile list.
+            // AxQS's custom per-section editing remains exclusive to MistOS mode.
+            EditMode(
+                viewModel = viewModel.containerViewModel.editModeViewModel,
+                modifier = modifier.fillMaxWidth()
+                    .padding(top = { viewModel.qqsHeaderHeight }),
+            )
+            return
+        }
         val context = LocalContext.current
         AxQsEditUi(
             editModeViewModel = viewModel.containerViewModel.editModeViewModel,
