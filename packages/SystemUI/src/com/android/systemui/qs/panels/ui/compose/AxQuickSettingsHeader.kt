@@ -60,6 +60,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.layout.Layout
@@ -99,6 +100,7 @@ import com.android.systemui.statusbar.systemstatusicons.ui.compose.SystemStatusI
 import kotlin.math.max
 
 private val AxQuickSettingsHeaderContent = SceneKey("AxQuickSettingsHeader")
+private val AxLandscapeStatusRowContent = SceneKey("AxLandscapeStatusRow")
 
 @Composable
 fun AxQuickSettingsHeader(
@@ -214,6 +216,97 @@ fun AxQuickSettingsHeader(
     }
 }
 
+/**
+ * Status information for the expanded LANDSCAPE control center.
+ *
+ * The original, two-line AxQuickSettingsHeader remains in QQS, where it is
+ * faded out by QSFragmentCompose during expansion. This is an independent,
+ * single-line header measured in the QS content column; it does not overlay
+ * tiles, media, or notifications and deliberately contains no edit actions.
+ *
+ * Clock/date and cellular/Wi-Fi/battery use the existing live SystemUI views,
+ * not polling timers or manufactured status icons.
+ */
+@Composable
+fun AxLandscapeQuickSettingsStatusRow(
+    viewModel: ShadeHeaderViewModel,
+    isTransitioning: Boolean,
+    modifier: Modifier = Modifier,
+) {
+    val foreground = MaterialTheme.colorScheme.onSurface
+    BoxWithConstraints(modifier.fillMaxWidth()) {
+        val showCarrier = maxWidth >= 530.dp
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .heightIn(min = 36.dp)
+                .padding(horizontal = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Row(
+                modifier = Modifier.weight(0.44f).clipToBounds(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                AxHeaderClock(
+                    onClick = viewModel::onClockClicked,
+                    textColor = foreground,
+                    fontSizeSp = 16f,
+                )
+                AxQuickSettingsDate(
+                    viewModel = viewModel,
+                    compact = true,
+                    modifier = Modifier.weight(1f),
+                )
+            }
+            Row(
+                modifier = Modifier.weight(0.56f),
+                horizontalArrangement = Arrangement.End,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                if (showCarrier) {
+                    Box(
+                        modifier = Modifier.weight(0.35f).clipToBounds(),
+                        contentAlignment = Alignment.CenterEnd,
+                    ) {
+                        AxCarrierText(
+                            viewModel = viewModel,
+                            textColor = foreground,
+                        )
+                    }
+                }
+                Box(
+                    modifier = Modifier.weight(1f).clipToBounds(),
+                    contentAlignment = Alignment.CenterEnd,
+                ) {
+                    AxStatusIcons(
+                        viewModel = viewModel,
+                        isTransitioning = isTransitioning,
+                        foregroundColor = foreground.toArgb(),
+                        backgroundColor = Color.Transparent.toArgb(),
+                        modifier = Modifier.fillMaxWidth(),
+                        contentKey = AxLandscapeStatusRowContent,
+                    )
+                }
+                AxBatteryInfo(
+                    viewModel = viewModel,
+                    showIcon = true,
+                    useExpandedFormat = false,
+                    textColor = foreground,
+                    iconTint = foreground,
+                    iconBackgroundColor = Color.Transparent,
+                )
+                if (viewModel.isPrivacyChipVisible) {
+                    AxPrivacyChip(
+                        privacyList = viewModel.privacyItems,
+                        onClick = viewModel::onPrivacyChipClicked,
+                    )
+                }
+            }
+        }
+    }
+}
+
 @Composable
 private fun AxStatusIcons(
     viewModel: ShadeHeaderViewModel,
@@ -221,6 +314,7 @@ private fun AxStatusIcons(
     @ColorInt foregroundColor: Int,
     @ColorInt backgroundColor: Int,
     modifier: Modifier = Modifier,
+    contentKey: SceneKey = AxQuickSettingsHeaderContent,
 ) {
     if (SystemStatusIconsInCompose.isEnabled) {
         SystemStatusIcons(
@@ -231,12 +325,12 @@ private fun AxStatusIcons(
         )
     } else {
         val statusIconContext = LocalStatusIconContext.current
-        val iconContainer = statusIconContext.iconContainer(AxQuickSettingsHeaderContent).apply {
+        val iconContainer = statusIconContext.iconContainer(contentKey).apply {
             // Do not replace an eighth icon with a dot if all icons actually fit.
             // Overflow remains enabled when the measured width is insufficient.
             setShouldRestrictIcons(false)
         }
-        val iconManager = statusIconContext.iconManager(AxQuickSettingsHeaderContent)
+        val iconManager = statusIconContext.iconManager(contentKey)
         val movableContent =
             remember(statusIconContext, iconManager) {
                 statusIconContext.movableContent(iconManager)
@@ -386,12 +480,17 @@ private fun AxCustomClockView(
 }
 
 @Composable
-fun AxQuickSettingsDate(viewModel: ShadeHeaderViewModel, modifier: Modifier = Modifier) {
+fun AxQuickSettingsDate(
+    viewModel: ShadeHeaderViewModel,
+    modifier: Modifier = Modifier,
+    compact: Boolean = false,
+) {
     val context = LocalContext.current
     AxHeaderDate(
         longerDateText = viewModel.longerDateText,
         shorterDateText = viewModel.shorterDateText,
         textColor = MaterialTheme.colorScheme.onSurface,
+        fontSizeSp = if (compact) 13f else AX_DATE_TEXT_SIZE,
         modifier =
             modifier.clickable {
                 try {
@@ -409,7 +508,12 @@ fun AxQuickSettingsDate(viewModel: ShadeHeaderViewModel, modifier: Modifier = Mo
 }
 
 @Composable
-private fun AxHeaderClock(onClick: () -> Unit, textColor: Color, modifier: Modifier = Modifier) {
+private fun AxHeaderClock(
+    onClick: () -> Unit,
+    textColor: Color,
+    modifier: Modifier = Modifier,
+    fontSizeSp: Float = AX_CLOCK_TEXT_SIZE,
+) {
     val configuration = LocalConfiguration.current
     key(configuration.densityDpi, configuration.fontScale) {
         AndroidView(
@@ -430,7 +534,7 @@ private fun AxHeaderClock(onClick: () -> Unit, textColor: Color, modifier: Modif
                         textDirection = View.TEXT_DIRECTION_LOCALE
                         gravity = Gravity.START or Gravity.CENTER_VERTICAL
                         setTypeface(typeface, Typeface.NORMAL)
-                        setTextSize(TypedValue.COMPLEX_UNIT_SP, AX_CLOCK_TEXT_SIZE)
+                        setTextSize(TypedValue.COMPLEX_UNIT_SP, fontSizeSp)
                         setPaddingRelative(0, 0, clockEndPadding, 0)
                     }
             },
@@ -441,7 +545,7 @@ private fun AxHeaderClock(onClick: () -> Unit, textColor: Color, modifier: Modif
                     )
                 view.setTextColor(textColor.toArgb())
                 view.setTypeface(view.typeface, Typeface.NORMAL)
-                view.setTextSize(TypedValue.COMPLEX_UNIT_SP, AX_CLOCK_TEXT_SIZE)
+                view.setTextSize(TypedValue.COMPLEX_UNIT_SP, fontSizeSp)
                 view.setPaddingRelative(0, 0, clockEndPadding, 0)
             },
             modifier = modifier.wrapContentWidth(unbounded = true).clickable(onClick = onClick),
@@ -455,10 +559,11 @@ private fun AxHeaderDate(
     shorterDateText: String,
     textColor: Color,
     modifier: Modifier = Modifier,
+    fontSizeSp: Float = AX_DATE_TEXT_SIZE,
 ) {
     val textStyle =
         MaterialTheme.typography.bodyLarge.copy(
-            fontSize = AX_DATE_TEXT_SIZE.sp,
+            fontSize = fontSizeSp.sp,
             platformStyle = PlatformTextStyle(includeFontPadding = true),
         )
     Layout(
