@@ -291,14 +291,16 @@ private class CellularIconViewModel(
 
     private val showNetworkTypeIcon: Flow<Boolean> =
         combine(
-                iconInteractor.isDataConnected,
+                iconInteractor.isInService,
+                iconInteractor.isEmergencyOnly,
                 iconInteractor.isDataEnabled,
                 iconInteractor.alwaysShowDataRatIcon,
-                iconInteractor.mobileIsDefault,
                 iconInteractor.carrierNetworkChangeActive,
-            ) { dataConnected, dataEnabled, alwaysShow, mobileIsDefault, carrierNetworkChange ->
-                alwaysShow ||
-                    (!carrierNetworkChange && (dataEnabled && dataConnected && mobileIsDefault))
+            ) { inService, emergencyOnly, dataEnabled, alwaysShow, carrierNetworkChange ->
+                // A registered cellular RAT is still valid while Wi-Fi provides internet.
+                // Use the telephony-reported icon group; never fabricate LTE/4G.
+                inService && !emergencyOnly && !carrierNetworkChange &&
+                    (dataEnabled || alwaysShow)
             }
             .distinctUntilChanged()
             .logDiffsForTable(
@@ -328,12 +330,7 @@ private class CellularIconViewModel(
                         Icon.Resource(contIcon, desc)
                     }
                     else null
-                return@combine when {
-                    !shouldShow -> null
-                    shouldShowFourgIcon ||
-                    !shouldShowFourgIcon -> icon
-                    else -> icon
-                }
+                if (shouldShow) icon else null
             }
             .distinctUntilChanged()
             .stateIn(scope, SharingStarted.WhileSubscribed(), null)
