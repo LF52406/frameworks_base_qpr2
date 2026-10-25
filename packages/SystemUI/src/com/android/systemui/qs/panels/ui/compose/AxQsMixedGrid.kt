@@ -273,13 +273,6 @@ internal fun ContentScope.AxQsMixedGrid(
                 maxWidth * AxQuickSettingsLayoutDefaults.LANDSCAPE_SIDE_PADDING_FRACTION
             val contentPadding = if (splitShade) splitShadePadding else portraitPadding
             val gridWidth = (maxWidth - contentPadding * 2).coerceAtLeast(0.dp)
-            val contentTopPadding =
-                if (splitShade) {
-                    AxQuickSettingsLayoutDefaults.LandscapeHeaderHeight +
-                        AxQuickSettingsLayoutDefaults.LandscapeHeaderContentSpacing
-                } else {
-                    0.dp
-                }
             val circleCells =
                 useAxQsCircleCells(
                     gridWidth = gridWidth,
@@ -363,9 +356,9 @@ internal fun ContentScope.AxQsMixedGrid(
                         scrollState = scrollState,
                         circleCells = circleCells,
                         modifier =
-                            Modifier.fillMaxSize()
-                                .padding(top = contentTopPadding)
-                                .padding(horizontal = contentPadding),
+                            // QSFragmentCompose has already reserved the measured
+                            // overlay header height. Do not double-pad split QS.
+                            Modifier.fillMaxSize().padding(horizontal = contentPadding),
                         controlContent = controlContent,
                         tileContent = tileContent,
                         tileLabel = tileLabel,
