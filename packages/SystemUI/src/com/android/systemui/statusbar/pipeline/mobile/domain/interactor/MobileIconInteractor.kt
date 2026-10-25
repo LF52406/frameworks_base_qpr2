@@ -535,7 +535,7 @@ class MobileIconInteractorImpl(
 
     override val isMobileHd: StateFlow<Boolean> =
         connectionRepository.imsState
-            .map { it.isHdVoiceCapable() }
+            .map { it.isVolteAvailable() }
             .stateIn(scope, SharingStarted.WhileSubscribed(), false)
 
     override val isVoWifi: StateFlow<Boolean> =

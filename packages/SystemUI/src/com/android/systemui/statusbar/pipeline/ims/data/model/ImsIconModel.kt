@@ -16,6 +16,6 @@
 package com.android.systemui.statusbar.pipeline.ims.data.model
 
 data class ImsIconModel(
-    val showHdIcon: Boolean = false,
+    val showHdIcon: Boolean = true,
     val showVowifiIcon: Boolean = false
 )
