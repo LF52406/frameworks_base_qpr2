@@ -67,6 +67,7 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -413,7 +414,15 @@ constructor(
                         LocalRingerSliderViewModel provides ringerSliderViewModel,
                     ) {
                         WithStatusIconContext(tintedIconManagerFactory) {
-                            CollapsableQuickSettingsSTL()
+                            // The stock and MistOS QS trees share scene element keys,
+                            // including the media carousel. Retaining the old scene state
+                            // across a live style change can leave a detached stock media
+                            // layer drawn above the MistOS control center. Start a fresh
+                            // scene/layout composition when the selected style changes.
+                            // This only recreates QS UI, not the media session or player.
+                            key(stockQsStyle) {
+                                CollapsableQuickSettingsSTL()
+                            }
                         }
                     }
                 }
@@ -951,12 +960,34 @@ constructor(
                         ) {
                             Element(Elements.QuickQuickSettingsAndMedia, Modifier.fillMaxWidth()) {
                                 if (stockQsStyle) {
+                                    // QQS and fully expanded QS must use identical
+                                    // physical content bounds, including camera cutouts
+                                    // in landscape. Previously QQS rendered edge-to-edge
+                                    // while QS applied qsHorizontalMargin(), making
+                                    // tiles and media jump in width on the second swipe.
+                                    val stockCutout =
+                                        WindowInsets.displayCutout.asPaddingValues()
+                                    val stockDirection = LocalLayoutDirection.current
+                                    val stockMargin = qsHorizontalMargin()
+                                    val stockLeft = maxOf(
+                                        stockMargin,
+                                        stockCutout.calculateLeftPadding(stockDirection),
+                                    )
+                                    val stockRight = maxOf(
+                                        stockMargin,
+                                        stockCutout.calculateRightPadding(stockDirection),
+                                    )
                                     // Both STL scenes are composed during expansion. Keep the
                                     // standard compact grid out of the expanded grid's visual
                                     // phase: only one stock tile surface is visible at a time.
                                     Box(
                                         modifier = Modifier.fillMaxWidth()
+                                            .absolutePadding(
+                                                left = stockLeft,
+                                                right = stockRight,
+                                            )
                                             .graphicsLayer {
+                                                clip = true
                                                 alpha = (1f -
                                                     2f * viewModel.expansionState.progress)
                                                     .coerceIn(0f, 1f)
@@ -1155,8 +1186,20 @@ constructor(
                                 .sysuiResTag(ResIdTags.qsScroll)
                     ) {
                         if (stockQsStyle) {
-                            // AOSP's own tile grid, brightness and media layouts. The
-                            // MistOS controls/grid remain intact in the other branch.
+                            // Match the collapsed QQS bounds (including cutouts)
+                            // rather than shifting the stock player and tiles on expansion.
+                            val stockCutout =
+                                WindowInsets.displayCutout.asPaddingValues()
+                            val stockDirection = LocalLayoutDirection.current
+                            val stockMargin = qsHorizontalMargin()
+                            val stockLeft = maxOf(
+                                stockMargin,
+                                stockCutout.calculateLeftPadding(stockDirection),
+                            )
+                            val stockRight = maxOf(
+                                stockMargin,
+                                stockCutout.calculateRightPadding(stockDirection),
+                            )
                             Column(
                                 modifier = Modifier.fillMaxSize()
                                     .graphicsLayer {
@@ -1167,7 +1210,7 @@ constructor(
                                         Modifier.gesturesDisabled()
                                     }
                                     .verticalScroll(scrollState)
-                                    .padding(horizontal = qsHorizontalMargin())
+                                    .absolutePadding(left = stockLeft, right = stockRight)
                                     .sysuiResTag(ResIdTags.quickSettingsPanel),
                             ) {
                                 QuickSettingsLayout(

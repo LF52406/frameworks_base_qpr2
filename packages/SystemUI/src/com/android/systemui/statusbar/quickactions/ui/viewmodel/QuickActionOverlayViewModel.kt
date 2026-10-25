@@ -34,6 +34,12 @@ constructor(
     val activePanel: QuickActionPanelModel?
         get() = interactor.activePanel
 
+    // Used by the renderer to enforce the shade boundary at the actual
+    // popup surface, even if an overlay transition still has a stale panel.
+    val isAnyShadeExpanded = shadeInteractor.isAnyExpanded
+    val isQsExpanded = shadeInteractor.isQsExpanded
+    val isNotificationsExpanded = shadeInteractor.isShadeAnyExpanded
+
     fun onShadeOverlayBoundsChanged(bounds: androidx.compose.ui.geometry.Rect?) {
         val boundsRect =
             bounds?.let {
