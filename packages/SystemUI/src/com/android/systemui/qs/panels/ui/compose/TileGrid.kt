@@ -46,6 +46,7 @@ fun ContentScope.TileGrid(
     modifier: Modifier = Modifier,
     listening: () -> Boolean = { true },
     enableRevealEffect: Boolean = false,
+    ignoreIosMode: Boolean = false,
 ) {
     val context = LocalContext.current
     val cr = context.contentResolver
@@ -77,7 +78,7 @@ fun ContentScope.TileGrid(
     val gridLayout = viewModel.gridLayout
     val allTiles: List<TileViewModel> = viewModel.tileViewModels
 
-    val tiles: List<TileViewModel> = if (iosPanelEnabled) {
+    val tiles: List<TileViewModel> = if (iosPanelEnabled && !ignoreIosMode) {
         allTiles.filter { it.spec.spec !in IOS_PANEL_HIDDEN_TILE_SPECS }
     } else {
         allTiles
