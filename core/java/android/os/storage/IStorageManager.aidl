@@ -170,4 +170,11 @@ interface IStorageManager {
      * is returned.
      */
     int getInternalStorageRemainingLifetime() = 99;
+    /**
+     * Run the existing vold idle maintenance (F2FS garbage collection if needed
+     * and TRIM), reporting the real asynchronous completion to a privileged caller.
+     * No file-level defragmentation is implied by the callback.
+     */
+    @EnforcePermission("MOUNT_UNMOUNT_FILESYSTEMS")
+    void runIdleMaintenanceWithCallback(IVoldTaskListener listener) = 100;
 }
