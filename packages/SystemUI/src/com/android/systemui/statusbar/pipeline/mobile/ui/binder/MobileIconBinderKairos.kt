@@ -142,6 +142,8 @@ object MobileIconBinderKairos {
         val networkTypeView = view.requireViewById<ImageView>(R.id.mobile_type)
         val networkTypeContainer = view.requireViewById<FrameLayout>(R.id.mobile_type_container)
         val iconView = view.requireViewById<ImageView>(R.id.mobile_signal)
+        val mobileHdView = view.requireViewById<ImageView>(R.id.mobile_hd)
+        val mobileHdSpace = view.requireViewById<Space>(R.id.mobile_hd_space)
         val roamingView = view.requireViewById<ImageView>(R.id.mobile_roaming)
         val roamingSpace = view.requireViewById<Space>(R.id.mobile_roaming_space)
         val dotView = view.requireViewById<StatusBarIconView>(R.id.status_bar_dot)
@@ -292,9 +294,20 @@ object MobileIconBinderKairos {
                         networkTypeView.imageTintList = tint
                     }
                     roamingView.imageTintList = tint
+                    mobileHdView.imageTintList = tint
                     activityIn.imageTintList = tint
                     activityOut.imageTintList = tint
                     dotView.setDecorColor(colors.tint)
+                }
+
+            // Show VoLTE only for voice-capable LTE IMS, honoring the user's icon toggle.
+            combine(
+                viewModel.iconInteractor.isMobileHd,
+                viewModel.iconInteractor.isMobileHdForceHidden,
+            ) { isVolte, isHidden -> isVolte && !isHidden }
+                .observe(name = nameTag { "MobileIconBinderKairos.volteIndicator" }) { show ->
+                    mobileHdView.isVisible = show
+                    mobileHdSpace.isVisible = show
                 }
 
             // Set the roaming indicator

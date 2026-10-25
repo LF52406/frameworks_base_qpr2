@@ -16,6 +16,7 @@
 package com.android.systemui.statusbar.pipeline.ims.data.repository
 
 import android.telephony.SubscriptionManager
+import android.util.Log
 import android.telephony.ims.ImsException
 import android.telephony.ims.ImsManager
 import android.telephony.ims.ImsMmTelManager
@@ -64,10 +65,12 @@ class ImsRepositoryImpl(
         callbackFlow {
             val registrationCallback = object : RegistrationCallback() {
                 override fun onRegistered(attributes: ImsRegistrationAttributes) {
+                    Log.i(TAG, "IMS registered subId=${subId} tech=${attributes.registrationTechnology}")
                     trySend(CallbackEvent.OnImsRegistrationChanged(true, attributes))
                 }
 
                 override fun onUnregistered(info: ImsReasonInfo) {
+                    Log.i(TAG, "IMS unregistered subId=${subId} reason=${info.code}")
                     trySend(CallbackEvent.OnImsRegistrationChanged(false, null))
                 }
             }
@@ -75,47 +78,78 @@ class ImsRepositoryImpl(
                 override fun onCapabilitiesStatusChanged(
                     capabilities: MmTelFeature.MmTelCapabilities
                 ) {
+                    Log.i(
+                        TAG,
+                        "IMS capabilities subId=${subId} voice=${capabilities.isCapable(MmTelFeature.MmTelCapabilities.CAPABILITY_TYPE_VOICE)}"
+                    )
                     trySend(CallbackEvent.OnImsCapabilitiesStatusChanged(capabilities))
                 }
             }
             val stateCallback = object : ImsStateCallback() {
                 override fun onAvailable() {
-                    imsMmTelManager.registerImsRegistrationCallback(
-                        bgDispatcher.asExecutor(), registrationCallback
-                    )
-                    imsMmTelManager.registerMmTelCapabilityCallback(
-                        bgDispatcher.asExecutor(), capabilityCallback
-                    )
+                    try {
+                        imsMmTelManager.registerImsRegistrationCallback(
+                            bgDispatcher.asExecutor(), registrationCallback
+                        )
+                        imsMmTelManager.registerMmTelCapabilityCallback(
+                            bgDispatcher.asExecutor(), capabilityCallback
+                        )
+                    } catch (e: Exception) {
+                        // Without closing the flow a failed registration leaves the icon
+                        // permanently stuck on its initial false state.
+                        Log.e(TAG, "Failed to attach MMTEL callbacks subId=${subId}", e)
+                        close(e)
+                    }
                 }
 
                 override fun onUnavailable(reason: Int) {
-                    imsMmTelManager.unregisterImsRegistrationCallback(registrationCallback)
-                    imsMmTelManager.unregisterMmTelCapabilityCallback(capabilityCallback)
+                    Log.i(TAG, "IMS unavailable subId=${subId} reason=${reason}")
+                    // Drop stale LTE voice state while telephony disconnects.
+                    trySend(CallbackEvent.OnImsUnavailable)
+                    runCatching {
+                        imsMmTelManager.unregisterImsRegistrationCallback(registrationCallback)
+                    }
+                    runCatching {
+                        imsMmTelManager.unregisterMmTelCapabilityCallback(capabilityCallback)
+                    }
                 }
 
                 override fun onError() {
-                    imsMmTelManager.unregisterImsRegistrationCallback(registrationCallback)
-                    imsMmTelManager.unregisterMmTelCapabilityCallback(capabilityCallback)
+                    // Android deregisters ImsStateCallback after a telephony crash.
+                    // Recreate the complete subscription instead of waiting forever.
+                    Log.w(TAG, "IMS state callback lost subId=${subId}; restarting")
+                    close(ImsCallbackRestartException(subId))
                 }
             }
             imsMmTelManager.registerImsStateCallback(
                 bgDispatcher.asExecutor(), stateCallback
             )
             awaitClose {
-                imsMmTelManager.unregisterImsStateCallback(stateCallback)
-                imsMmTelManager.unregisterImsRegistrationCallback(registrationCallback)
-                imsMmTelManager.unregisterMmTelCapabilityCallback(capabilityCallback)
+                runCatching { imsMmTelManager.unregisterImsStateCallback(stateCallback) }
+                runCatching {
+                    imsMmTelManager.unregisterImsRegistrationCallback(registrationCallback)
+                }
+                runCatching {
+                    imsMmTelManager.unregisterMmTelCapabilityCallback(capabilityCallback)
+                }
             }
         }
+            // Keep scan inside retry so a re-registration cannot reuse stale IMS state.
+            .scan(initial) { state, event -> state.applyEvent(event) }
             .retryWhen { cause, _ ->
-                // Retry the flow with 1 second delay
-                // only if service not available.
-                // This state is temporary and service may be available after sometime.
-                delay(1000)
-                cause is ImsException && cause.code == ImsException.CODE_ERROR_SERVICE_UNAVAILABLE
+                val recoverable = cause is ImsCallbackRestartException ||
+                    (cause is ImsException &&
+                        cause.code == ImsException.CODE_ERROR_SERVICE_UNAVAILABLE)
+                if (recoverable) {
+                    Log.w(TAG, "Retrying IMS callbacks subId=${subId}", cause)
+                    delay(1000)
+                }
+                recoverable
             }
-            .catch { /* Nothing */ }
-            .scan(initial = initial) { state, event -> state.applyEvent(event) }
+            .catch { cause ->
+                Log.e(TAG, "IMS callback stream failed subId=${subId}", cause)
+                emit(initial)
+            }
             .stateIn(scope = scope, started = SharingStarted.WhileSubscribed(), initial)
     }
 
@@ -140,6 +174,10 @@ class ImsRepositoryImpl(
             .catch { emit(ImsStateModel()) /* on exception, just return default value */ }
             .stateIn(scope, SharingStarted.WhileSubscribed(), ImsStateModel())
 
+    private companion object {
+        const val TAG = "SystemUI.ImsRepository"
+    }
+
     class Factory
     @Inject
     constructor(
@@ -160,7 +198,13 @@ class ImsRepositoryImpl(
     }
 }
 
+private class ImsCallbackRestartException(subId: Int) :
+    RuntimeException("IMS callback needs re-registration for subId=${subId}")
+
 sealed interface CallbackEvent {
+    /** Clears registration and capabilities when the MMTEL service becomes unavailable. */
+    data object OnImsUnavailable : CallbackEvent
+
     data class OnImsRegistrationChanged(
         val registered: Boolean,
         val attributes: ImsRegistrationAttributes?
@@ -177,6 +221,7 @@ data class ImsCallbackState(
 ) {
     fun applyEvent(event: CallbackEvent): ImsCallbackState {
         return when (event) {
+            CallbackEvent.OnImsUnavailable -> ImsCallbackState()
             is CallbackEvent.OnImsRegistrationChanged -> copy(onImsRegistrationChanged = event)
             is CallbackEvent.OnImsCapabilitiesStatusChanged -> copy(onImsCapabilitiesStatusChanged = event)
         }

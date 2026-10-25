@@ -125,7 +125,7 @@ constructor(
             .stateIn(scope, started = SharingStarted.WhileSubscribed(), listOf())
 
     override val imsIconState: StateFlow<ImsIconModel> = callbackFlow {
-        var showHdIcon = false
+        var showHdIcon = true
         var showVowifiIcon = false
         val callback =
             object : TunerService.Tunable {
@@ -133,7 +133,7 @@ constructor(
                     when (key) {
                         KEY_HD_ICON -> {
                             showHdIcon =
-                                TunerService.parseIntegerSwitch(newValue, false)
+                                TunerService.parseIntegerSwitch(newValue, true)
                         }
 
                         KEY_VOWIFI_ICON -> {

@@ -468,7 +468,7 @@ class MobileIconInteractorKairosImpl(
 
     override val isMobileHd: State<Boolean> =
         connectionRepository.imsState
-            .map { it.isHdVoiceCapable() }
+            .map { it.isVolteAvailable() }
 
     override val isVoWifi: State<Boolean> =
         connectionRepository.imsState
