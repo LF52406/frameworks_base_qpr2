@@ -39,15 +39,16 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.absolutePadding
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.displayCutout
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.MaterialTheme
@@ -63,12 +64,14 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.text.PlatformTextStyle
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -102,6 +105,7 @@ import com.android.systemui.statusbar.systemstatusicons.ui.compose.SystemStatusI
 import kotlin.math.max
 
 private val AxQuickSettingsHeaderContent = SceneKey("AxQuickSettingsHeader")
+private val AxLandscapeStatusRowContent = SceneKey("AxLandscapeStatusRow")
 
 @Composable
 fun AxQuickSettingsHeader(
@@ -193,11 +197,18 @@ fun AxQuickSettingsHeader(
         }
         if (landscape) {
             val statusBarHeightDp = with(LocalDensity.current) { viewModel.statusBarHeightPx.toDp() }
-            Box(
-                Modifier.fillMaxWidth().heightIn(min = statusBarHeightDp)
+            // Keep the clock/date and carrier/status icons in separate measured regions.
+            // Independent overlaid boxes can collide on narrow landscape displays.
+            Row(
+                modifier = Modifier.fillMaxWidth().heightIn(min = statusBarHeightDp),
+                verticalAlignment = Alignment.Top,
             ) {
-                Box(modifier = Modifier.align(Alignment.TopStart)) { startContent() }
-                Box(modifier = Modifier.align(Alignment.TopEnd)) { endContent() }
+                Box(modifier = Modifier.weight(1f), contentAlignment = Alignment.TopStart) {
+                    startContent()
+                }
+                Box(modifier = Modifier.weight(1f), contentAlignment = Alignment.TopEnd) {
+                    endContent()
+                }
             }
         } else {
             AxCutoutAwareShadeHeader(
@@ -210,6 +221,103 @@ fun AxQuickSettingsHeader(
     }
 }
 
+/**
+ * Status information for the expanded LANDSCAPE control center.
+ *
+ * The original, two-line AxQuickSettingsHeader remains in QQS, where it is
+ * faded out by QSFragmentCompose during expansion. This is an independent,
+ * single-line header measured in the QS content column; it does not overlay
+ * tiles, media, or notifications and deliberately contains no edit actions.
+ *
+ * Clock/date and cellular/Wi-Fi/battery use the existing live SystemUI views,
+ * not polling timers or manufactured status icons.
+ */
+@Composable
+fun AxLandscapeQuickSettingsStatusRow(
+    viewModel: ShadeHeaderViewModel,
+    isTransitioning: Boolean,
+    modifier: Modifier = Modifier,
+) {
+    val foreground = MaterialTheme.colorScheme.onSurface
+    BoxWithConstraints(modifier.fillMaxWidth()) {
+        val showCarrier = maxWidth >= 530.dp
+        // Landscape phones can have a camera cutout on the LEFT or RIGHT.
+        // The status row must respect physical cutout insets on both sides.
+        val cutoutPadding = WindowInsets.displayCutout.asPaddingValues()
+        val layoutDirection = LocalLayoutDirection.current
+        val leftPadding = maxOf(12.dp, cutoutPadding.calculateLeftPadding(layoutDirection))
+        val rightPadding = maxOf(12.dp, cutoutPadding.calculateRightPadding(layoutDirection))
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .heightIn(min = 36.dp)
+                .absolutePadding(left = leftPadding, right = rightPadding),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Row(
+                modifier = Modifier.weight(0.44f).clipToBounds(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                AxHeaderClock(
+                    onClick = viewModel::onClockClicked,
+                    textColor = foreground,
+                    fontSizeSp = 16f,
+                )
+                AxQuickSettingsDate(
+                    viewModel = viewModel,
+                    compact = true,
+                    modifier = Modifier.weight(1f),
+                )
+            }
+            Row(
+                modifier = Modifier.weight(0.56f),
+                horizontalArrangement = Arrangement.End,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                if (showCarrier) {
+                    Box(
+                        modifier = Modifier.weight(0.35f).clipToBounds(),
+                        contentAlignment = Alignment.CenterEnd,
+                    ) {
+                        AxCarrierText(
+                            viewModel = viewModel,
+                            textColor = foreground,
+                        )
+                    }
+                }
+                Box(
+                    modifier = Modifier.weight(1f).clipToBounds(),
+                    contentAlignment = Alignment.CenterEnd,
+                ) {
+                    AxStatusIcons(
+                        viewModel = viewModel,
+                        isTransitioning = isTransitioning,
+                        foregroundColor = foreground.toArgb(),
+                        backgroundColor = Color.Transparent.toArgb(),
+                        modifier = Modifier.fillMaxWidth(),
+                        contentKey = AxLandscapeStatusRowContent,
+                    )
+                }
+                AxBatteryInfo(
+                    viewModel = viewModel,
+                    showIcon = true,
+                    useExpandedFormat = false,
+                    textColor = foreground,
+                    iconTint = foreground,
+                    iconBackgroundColor = Color.Transparent,
+                )
+                if (viewModel.isPrivacyChipVisible) {
+                    AxPrivacyChip(
+                        privacyList = viewModel.privacyItems,
+                        onClick = viewModel::onPrivacyChipClicked,
+                    )
+                }
+            }
+        }
+    }
+}
+
 @Composable
 private fun AxStatusIcons(
     viewModel: ShadeHeaderViewModel,
@@ -217,6 +325,7 @@ private fun AxStatusIcons(
     @ColorInt foregroundColor: Int,
     @ColorInt backgroundColor: Int,
     modifier: Modifier = Modifier,
+    contentKey: SceneKey = AxQuickSettingsHeaderContent,
 ) {
     if (SystemStatusIconsInCompose.isEnabled) {
         SystemStatusIcons(
@@ -227,8 +336,12 @@ private fun AxStatusIcons(
         )
     } else {
         val statusIconContext = LocalStatusIconContext.current
-        val iconContainer = statusIconContext.iconContainer(AxQuickSettingsHeaderContent)
-        val iconManager = statusIconContext.iconManager(AxQuickSettingsHeaderContent)
+        val iconContainer = statusIconContext.iconContainer(contentKey).apply {
+            // Do not replace an eighth icon with a dot if all icons actually fit.
+            // Overflow remains enabled when the measured width is insufficient.
+            setShouldRestrictIcons(false)
+        }
+        val iconManager = statusIconContext.iconManager(contentKey)
         val movableContent =
             remember(statusIconContext, iconManager) {
                 statusIconContext.movableContent(iconManager)
@@ -241,7 +354,9 @@ private fun AxStatusIcons(
             iconContainer = iconContainer,
             iconManager = iconManager,
             statusBarIconController = viewModel.statusBarIconController,
-            useExpandedFormat = !viewModel.isSingleCarrier,
+            // The carrier label is drawn separately. Preserve real mobile network
+            // icons, including with two SIM subscriptions.
+            useExpandedFormat = false,
             isTransitioning = isTransitioning,
             foregroundColor = foregroundColor,
             backgroundColor = backgroundColor,
@@ -376,12 +491,17 @@ private fun AxCustomClockView(
 }
 
 @Composable
-fun AxQuickSettingsDate(viewModel: ShadeHeaderViewModel, modifier: Modifier = Modifier) {
+fun AxQuickSettingsDate(
+    viewModel: ShadeHeaderViewModel,
+    modifier: Modifier = Modifier,
+    compact: Boolean = false,
+) {
     val context = LocalContext.current
     AxHeaderDate(
         longerDateText = viewModel.longerDateText,
         shorterDateText = viewModel.shorterDateText,
         textColor = MaterialTheme.colorScheme.onSurface,
+        fontSizeSp = if (compact) 13f else AX_DATE_TEXT_SIZE,
         modifier =
             modifier.clickable {
                 try {
@@ -399,7 +519,12 @@ fun AxQuickSettingsDate(viewModel: ShadeHeaderViewModel, modifier: Modifier = Mo
 }
 
 @Composable
-private fun AxHeaderClock(onClick: () -> Unit, textColor: Color, modifier: Modifier = Modifier) {
+private fun AxHeaderClock(
+    onClick: () -> Unit,
+    textColor: Color,
+    modifier: Modifier = Modifier,
+    fontSizeSp: Float = AX_CLOCK_TEXT_SIZE,
+) {
     val configuration = LocalConfiguration.current
     key(configuration.densityDpi, configuration.fontScale) {
         AndroidView(
@@ -420,7 +545,7 @@ private fun AxHeaderClock(onClick: () -> Unit, textColor: Color, modifier: Modif
                         textDirection = View.TEXT_DIRECTION_LOCALE
                         gravity = Gravity.START or Gravity.CENTER_VERTICAL
                         setTypeface(typeface, Typeface.NORMAL)
-                        setTextSize(TypedValue.COMPLEX_UNIT_SP, AX_CLOCK_TEXT_SIZE)
+                        setTextSize(TypedValue.COMPLEX_UNIT_SP, fontSizeSp)
                         setPaddingRelative(0, 0, clockEndPadding, 0)
                     }
             },
@@ -431,7 +556,7 @@ private fun AxHeaderClock(onClick: () -> Unit, textColor: Color, modifier: Modif
                     )
                 view.setTextColor(textColor.toArgb())
                 view.setTypeface(view.typeface, Typeface.NORMAL)
-                view.setTextSize(TypedValue.COMPLEX_UNIT_SP, AX_CLOCK_TEXT_SIZE)
+                view.setTextSize(TypedValue.COMPLEX_UNIT_SP, fontSizeSp)
                 view.setPaddingRelative(0, 0, clockEndPadding, 0)
             },
             modifier = modifier.wrapContentWidth(unbounded = true).clickable(onClick = onClick),
@@ -445,10 +570,11 @@ private fun AxHeaderDate(
     shorterDateText: String,
     textColor: Color,
     modifier: Modifier = Modifier,
+    fontSizeSp: Float = AX_DATE_TEXT_SIZE,
 ) {
     val textStyle =
         MaterialTheme.typography.bodyLarge.copy(
-            fontSize = AX_DATE_TEXT_SIZE.sp,
+            fontSize = fontSizeSp.sp,
             platformStyle = PlatformTextStyle(includeFontPadding = true),
         )
     Layout(
@@ -509,8 +635,6 @@ object AxQuickSettingsLayoutDefaults {
     val LandscapeGridSpacing = 16.dp
     val LandscapeSplitGridSpacing = AxQsLayoutPadding.LANDSCAPE_SPLIT_GRID_SPACING_DP.dp
     val LandscapeHeaderContentSpacing = 8.dp
-    val LandscapeHeaderHeight: Dp
-        @Composable get() = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
 }
 
 @Composable

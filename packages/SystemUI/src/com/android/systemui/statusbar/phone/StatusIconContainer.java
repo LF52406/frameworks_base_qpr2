@@ -135,7 +135,10 @@ public class StatusIconContainer extends AlphaOptimizedLinearLayout {
     }
 
     public void setShouldRestrictIcons(boolean should) {
-        mShouldRestrictIcons = should;
+        if (mShouldRestrictIcons != should) {
+            mShouldRestrictIcons = should;
+            requestLayout();
+        }
     }
 
     public boolean isRestrictingIcons() {
