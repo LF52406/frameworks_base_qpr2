@@ -236,6 +236,7 @@ constructor(
     }
 
     private val mediaHosts = arrayOfNulls<MediaHost>(LOCATION_STATUS_BAR_POPUP + 1)
+    private val attachedHostViews = mutableSetOf<UniqueObjectHostView>()
 
     /**
      * The last location where this view was at before going to the desired location. This is useful
@@ -761,17 +762,33 @@ constructor(
         viewHost.addOnAttachStateChangeListener(
             object : View.OnAttachStateChangeListener {
                 override fun onViewAttachedToWindow(p0: View) {
-                    if (rootOverlay == null) {
-                        rootView = viewHost.viewRootImpl.view
-                        rootOverlay = (rootView!!.overlay as ViewGroupOverlay)
-                    }
-                    viewHost.removeOnAttachStateChangeListener(this)
+                    onHostViewAttached(viewHost, viewHost.viewRootImpl.view)
                 }
 
-                override fun onViewDetachedFromWindow(p0: View) {}
+                override fun onViewDetachedFromWindow(p0: View) {
+                    onHostViewDetached(viewHost)
+                }
             }
         )
         return viewHost
+    }
+
+    @VisibleForTesting
+    internal fun onHostViewAttached(hostView: UniqueObjectHostView, root: View) {
+        attachedHostViews.add(hostView)
+        if (rootOverlay == null) {
+            rootView = root
+            rootOverlay = root.overlay as ViewGroupOverlay
+        }
+        updateHostAttachment()
+    }
+
+    @VisibleForTesting
+    internal fun onHostViewDetached(hostView: UniqueObjectHostView) {
+        // isAttachedToWindow can still be true inside the detach callback. Track the
+        // callback state so an overlay is removed before the next expansion update.
+        attachedHostViews.remove(hostView)
+        updateHostAttachment()
     }
 
     /**
@@ -1198,6 +1215,7 @@ constructor(
             if (MediaControlsInComposeFlag.isEnabled) return
 
             var newLocation = resolveLocationForFading()
+            val resolvedHost = getHost(newLocation) ?: return
             // Don't use the overlay when fading or when we don't have active media
             var canUseOverlay = !isCurrentlyFading() && hasActiveMedia
             if (isCrossFadeAnimatorRunning) {
@@ -1211,8 +1229,22 @@ constructor(
                     canUseOverlay = true
                 }
             }
-            val inOverlay = isTransitionRunning() && rootOverlay != null && canUseOverlay
-            newLocation = if (inOverlay) IN_OVERLAY else newLocation
+            // MistOS renders its own media panel and does not attach the stock QS hosts.
+            // Their media-data visibility and cached measurements can survive a style
+            // switch. Never promote that detached carousel into the root overlay.
+            val qsHostDetached =
+                (desiredLocation == LOCATION_QS || desiredLocation == LOCATION_QQS) &&
+                    getHost(desiredLocation)?.hostView !in attachedHostViews
+            val inOverlay =
+                isTransitionRunning() && rootOverlay != null && canUseOverlay && !qsHostDetached
+            newLocation =
+                when {
+                    // Leave the carousel unparented until a QS host attaches again.
+                    // In particular, do not add a child to a host during its detach callback.
+                    qsHostDetached -> LOCATION_UNKNOWN
+                    inOverlay -> IN_OVERLAY
+                    else -> newLocation
+                }
             if (currentAttachmentLocation != newLocation) {
                 currentAttachmentLocation = newLocation
 
@@ -1222,15 +1254,15 @@ constructor(
                 // Add it to the new one
                 if (inOverlay) {
                     rootOverlay!!.add(mediaFrame)
-                } else {
-                    val targetHost = getHost(newLocation)!!.hostView
+                } else if (newLocation != LOCATION_UNKNOWN) {
+                    val targetHost = resolvedHost.hostView
                     // This will either do a full layout pass and remeasure, or it will bypass
                     // that and directly set the mediaFrame's bounds within the premeasured host.
                     targetHost.addView(mediaFrame)
                 }
                 val host = getHost(currentAttachmentLocation)
                 logger.logMediaHostAttachment(currentAttachmentLocation, host?.visible)
-                if (isCrossFadeAnimatorRunning) {
+                if (isCrossFadeAnimatorRunning && newLocation != LOCATION_UNKNOWN) {
                     // When cross-fading with an animation, we only notify the media carousel of the
                     // location change, once the view is reattached to the new place and not
                     // immediately
@@ -1288,7 +1320,15 @@ constructor(
             (onCommunalNotDreaming && qsExpansion == 0.0f) || onCommunalDreamingAndShadeExpanding
         val location =
             when {
-                isMediaControlPopupShowing ->
+                // This is a transient status-bar location, never a valid media
+                // destination while notifications or QS are expanded. If the
+                // popup state outlives a QS style switch, route media back into
+                // the normal QS hierarchy rather than leaving a floating host.
+                isMediaControlPopupShowing &&
+                    !shadeInteractor.isAnyExpanded.value &&
+                    !shadeInteractor.isQsExpanded.value &&
+                    shadeExpandedFraction <= 0f &&
+                    qsExpansion <= 0f ->
                     LOCATION_STATUS_BAR_POPUP
                 dreamOverlayActive && dreamMediaComplicationActive -> LOCATION_DREAM_OVERLAY
                 onCommunal -> LOCATION_COMMUNAL_HUB

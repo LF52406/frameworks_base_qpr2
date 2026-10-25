@@ -32,6 +32,7 @@ import com.android.systemui.dagger.qualifiers.Application
 import com.android.systemui.keyguard.domain.interactor.KeyguardTransitionInteractor
 import com.android.systemui.keyguard.shared.model.KeyguardState
 import com.android.systemui.lifecycle.HydratedActivatable
+import com.android.systemui.shade.domain.interactor.ShadeInteractor
 import com.android.systemui.statusbar.pipeline.shared.domain.interactor.StatusBarVisibilityInteractor
 import com.android.systemui.statusbar.quickactions.alarm.ui.viewmodel.AlarmPopupChipViewModel
 import com.android.systemui.statusbar.quickactions.assistant.StatusBarAssistantIcon
@@ -56,6 +57,7 @@ import dagger.assisted.AssistedInject
 import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.launch
@@ -72,6 +74,7 @@ constructor(
      private val keyguardTransitionInteractor: KeyguardTransitionInteractor,
     private val quickActionsInteractor: QuickActionsInteractor,
     private val statusBarVisibilityInteractor: StatusBarVisibilityInteractor,
+    private val shadeInteractor: ShadeInteractor,
     mediaControlChipFactory: MediaControlChipViewModel.Factory,
     avControlsChipFactory: AvControlsChipViewModel.Factory,
     shareScreenPrivacyIndicatorFactory: ShareScreenPrivacyIndicatorViewModel.Factory,
@@ -110,7 +113,38 @@ constructor(
             }
         }
 
+    // Quick Actions are rendered in a separate status-bar popup window, outside
+    // the QS scene. Recreating the QS composition alone cannot dismiss them.
+    // Reset the transient popup state whenever the user switches QS styles.
+    private val qsStyleObserver =
+        object : ContentObserver(Handler(Looper.getMainLooper())) {
+            override fun onChange(selfChange: Boolean) {
+                Log.i(TAG, "QS style changed: dismissing transient status-bar popups")
+                dismissTransientPopups()
+            }
+        }
+
+    private fun dismissTransientPopups() {
+        currentShownPopupChipId = null
+        if (quickActionsInteractor.activePanel != null) {
+            quickActionsInteractor.close()
+        }
+    }
+
     private var isOnLockscreen by mutableStateOf(false)
+
+    // Status-bar Quick Actions use an independent popup window. Keep all of
+    // these temporary popups off the notification shade and either QS style.
+    // This includes screen-recording and media popups. Regular notifications
+    // and the media controls inside QS are handled by separate renderers.
+    private val isAnyShadeExpanded by
+        shadeInteractor.isAnyExpanded.hydratedStateOf(traceName = "isAnyShadeExpanded")
+    private val isQsExpanded by
+        shadeInteractor.isQsExpanded.hydratedStateOf(traceName = "isQsExpanded")
+    private val isNotificationsExpanded by
+        shadeInteractor.isShadeAnyExpanded.hydratedStateOf(
+            traceName = "isNotificationsExpanded"
+        )
 
     /** The ID of the current chip that is currently active, or `null` if no chip is active. */
     private val currentActiveQuickActionId: QuickActionChipId?
@@ -172,14 +206,19 @@ constructor(
         candidateChips
             .filterIsInstance<QuickActionChipModel.PopupChip>()
             .map { chip ->
+                val popupAllowed =
+                    !isAnyShadeExpanded && !isQsExpanded && !isNotificationsExpanded
                 val isShown =
-                    (chip.chipId == currentActiveQuickActionId) ||
-                        (chip.chipId == currentShownPopupChipId)
+                    popupAllowed &&
+                        ((chip.chipId == currentActiveQuickActionId) ||
+                            (chip.chipId == currentShownPopupChipId))
                 chip.copy(
                     isPopupShown = isShown,
                     showPopup = {
-                        Log.d(TAG, "DynamicIsland: showPopup invoked for ${chip.chipId}")
-                        currentShownPopupChipId = chip.chipId
+                        if (popupAllowed) {
+                            Log.d(TAG, "DynamicIsland: showPopup invoked for ${chip.chipId}")
+                            currentShownPopupChipId = chip.chipId
+                        }
                     },
                     hidePopup = {
                         Log.d(TAG, "DynamicIsland: hidePopup invoked for ${chip.chipId}")
@@ -189,19 +228,21 @@ constructor(
                         quickActionsInteractor.close()
                     },
                     togglePopup = { _, anchorBounds ->
-                        chip.popupViewModelFactory?.let { factory ->
-                            quickActionsInteractor.toggle(
-                                QuickActionPanelModel(
-                                    chipId = chip.chipId,
-                                    anchorBounds = anchorBounds,
-                                    panelContentViewModelFactory = factory,
+                        if (popupAllowed) {
+                            chip.popupViewModelFactory?.let { factory ->
+                                quickActionsInteractor.toggle(
+                                    QuickActionPanelModel(
+                                        chipId = chip.chipId,
+                                        anchorBounds = anchorBounds,
+                                        panelContentViewModelFactory = factory,
+                                    )
                                 )
-                            )
-                        } ?: run {
-                            if (currentShownPopupChipId == chip.chipId) {
-                                currentShownPopupChipId = null
-                            } else {
-                                currentShownPopupChipId = chip.chipId
+                            } ?: run {
+                                if (currentShownPopupChipId == chip.chipId) {
+                                    currentShownPopupChipId = null
+                                } else {
+                                    currentShownPopupChipId = chip.chipId
+                                }
                             }
                         }
                     },
@@ -227,6 +268,12 @@ constructor(
                 UserHandle.USER_ALL,
             )
             dynamicIslandObserver.onChange(false)
+            context.contentResolver.registerContentObserver(
+                Settings.System.getUriFor("mist_qs_style"),
+                false,
+                qsStyleObserver,
+                UserHandle.USER_ALL,
+            )
 
             launch {
                 keyguardTransitionInteractor.isFinishedIn(KeyguardState.LOCKSCREEN)
@@ -246,6 +293,23 @@ constructor(
                 launch { assistantIcon.activate() }
             }
             launch { imeIndicatorChip.activate() }
+
+            // Dismiss already-open Quick Action popup windows as the shade
+            // begins to expand. Do not dismiss Android notifications or QS
+            // content; only the transient status-bar popup surface.
+            launch {
+                combine(
+                    shadeInteractor.isAnyExpanded,
+                    shadeInteractor.isQsExpanded,
+                    shadeInteractor.isShadeAnyExpanded,
+                ) { anyExpanded, qsExpanded, notificationsExpanded ->
+                    anyExpanded || qsExpanded || notificationsExpanded
+                }
+                    .distinctUntilChanged()
+                    .collectLatest { expanded ->
+                        if (expanded) dismissTransientPopups()
+                    }
+            }
 
             launch {
                 snapshotFlow {
@@ -292,6 +356,7 @@ constructor(
             try {
                 awaitCancellation()
             } finally {
+                context.contentResolver.unregisterContentObserver(qsStyleObserver)
                 context.contentResolver.unregisterContentObserver(dynamicIslandObserver)
             }
         }

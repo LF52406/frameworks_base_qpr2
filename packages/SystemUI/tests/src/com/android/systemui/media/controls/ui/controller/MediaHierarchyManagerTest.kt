@@ -210,6 +210,124 @@ class MediaHierarchyManagerTest : SysuiTestCase() {
         verify(lockHost).hostView = eq(host)
     }
 
+    private fun registerHostView(host: MediaHost): UniqueObjectHostView {
+        val hostView = mediaHierarchyManager.register(host)
+        whenever(host.hostView).thenReturn(hostView)
+        whenever(host.currentClipping).thenReturn(Rect())
+        return hostView
+    }
+
+    @Test
+    fun attachedQsHosts_useOverlayDuringExpansion() {
+        val qqsView = registerHostView(qqsHost)
+        val qsView = registerHostView(qsHost)
+        val root = FrameLayout(context)
+        mediaHierarchyManager.onHostViewAttached(qqsView, root)
+        mediaHierarchyManager.onHostViewAttached(qsView, root)
+        clearInvocations(logger)
+
+        mediaHierarchyManager.qsExpansion = 0.5f
+
+        verify(logger).logMediaHostAttachment(MediaHierarchyManager.IN_OVERLAY, null)
+        assertThat(mediaFrame.parent).isNotNull()
+        assertThat(mediaFrame.parent).isNotSameInstanceAs(qsView)
+        assertThat(mediaFrame.parent).isNotSameInstanceAs(qqsView)
+    }
+
+    @Test
+    fun qsHostDetachesDuringExpansion_removesCarouselFromOverlayImmediately() {
+        val qqsView = registerHostView(qqsHost)
+        val qsView = registerHostView(qsHost)
+        val root = FrameLayout(context)
+        mediaHierarchyManager.onHostViewAttached(qqsView, root)
+        mediaHierarchyManager.onHostViewAttached(qsView, root)
+        mediaHierarchyManager.qsExpansion = 0.5f
+
+        // No expansion update follows: the detach event itself must remove the overlay.
+        mediaHierarchyManager.onHostViewDetached(qsView)
+
+        assertThat(mediaFrame.parent).isNull()
+    }
+
+    @Test
+    fun qsHostsDetached_expansionNeverPromotesCarouselIntoOverlay() {
+        val qqsView = registerHostView(qqsHost)
+        val qsView = registerHostView(qsHost)
+        val root = FrameLayout(context)
+        mediaHierarchyManager.onHostViewAttached(qqsView, root)
+        mediaHierarchyManager.onHostViewAttached(qsView, root)
+        mediaHierarchyManager.qsExpansion = 0.5f
+        mediaHierarchyManager.onHostViewDetached(qsView)
+        mediaHierarchyManager.onHostViewDetached(qqsView)
+        clearInvocations(logger)
+
+        // Simulate repeated swipes after replacing stock QS with a custom media panel.
+        for (expansion in listOf(0.75f, 1f, 0.25f, 0f, 0.5f)) {
+            mediaHierarchyManager.qsExpansion = expansion
+            assertThat(mediaFrame.parent).isNull()
+        }
+
+        verify(logger, times(0))
+            .logMediaHostAttachment(MediaHierarchyManager.IN_OVERLAY, null)
+    }
+
+    @Test
+    fun qsHostsReattached_restoreOverlayOnEveryStyleSwitch() {
+        val qqsView = registerHostView(qqsHost)
+        val qsView = registerHostView(qsHost)
+        val root = FrameLayout(context)
+        mediaHierarchyManager.onHostViewAttached(qqsView, root)
+        mediaHierarchyManager.onHostViewAttached(qsView, root)
+        mediaHierarchyManager.qsExpansion = 0.5f
+
+        repeat(3) {
+            mediaHierarchyManager.onHostViewDetached(qsView)
+            mediaHierarchyManager.onHostViewDetached(qqsView)
+            assertThat(mediaFrame.parent).isNull()
+            mediaHierarchyManager.onHostViewAttached(qqsView, root)
+            clearInvocations(logger)
+
+            mediaHierarchyManager.onHostViewAttached(qsView, root)
+
+            verify(logger).logMediaHostAttachment(MediaHierarchyManager.IN_OVERLAY, null)
+            assertThat(mediaFrame.parent).isNotSameInstanceAs(qsView)
+        }
+    }
+
+    @Test
+    fun unrelatedHostDetaches_keepsOverlayForAttachedQsDestination() {
+        val qqsView = registerHostView(qqsHost)
+        val qsView = registerHostView(qsHost)
+        val root = FrameLayout(context)
+        mediaHierarchyManager.onHostViewAttached(qqsView, root)
+        mediaHierarchyManager.onHostViewAttached(qsView, root)
+        mediaHierarchyManager.qsExpansion = 0.5f
+        val overlayParent = mediaFrame.parent
+
+        mediaHierarchyManager.onHostViewDetached(qqsView)
+
+        assertThat(mediaFrame.parent).isSameInstanceAs(overlayParent)
+    }
+
+    @Test
+    fun qsHostsDetached_lockscreenCanStillReceiveCarousel() {
+        val qqsView = registerHostView(qqsHost)
+        val qsView = registerHostView(qsHost)
+        val lockView = registerHostView(lockHost)
+        val root = FrameLayout(context)
+        mediaHierarchyManager.onHostViewAttached(lockView, root)
+        mediaHierarchyManager.onHostViewAttached(qqsView, root)
+        mediaHierarchyManager.onHostViewAttached(qsView, root)
+        mediaHierarchyManager.qsExpansion = 0.5f
+        mediaHierarchyManager.onHostViewDetached(qsView)
+        mediaHierarchyManager.onHostViewDetached(qqsView)
+
+        goToLockscreen()
+        mediaHierarchyManager.qsExpansion = 0f
+
+        assertThat(mediaFrame.parent).isSameInstanceAs(lockView)
+    }
+
     @Test
     fun testBlockedWhenScreenTurningOff() {
         // Let's set it onto QS:

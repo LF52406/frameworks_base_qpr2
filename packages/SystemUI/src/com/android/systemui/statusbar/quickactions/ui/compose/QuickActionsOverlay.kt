@@ -25,6 +25,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.ReadOnlyComposable
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.boundsInWindow
@@ -36,6 +37,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.android.compose.animation.scene.ContentScope
 import com.android.compose.animation.scene.ElementKey
 import com.android.systemui.dagger.SysUISingleton
@@ -74,9 +76,16 @@ constructor(private val viewModelFactory: QuickActionOverlayViewModel.Factory) :
         val viewModel = rememberViewModel("QuickActionsOverlay") { viewModelFactory.create() }
 
         val activeChip = viewModel.activePanel
+        val isShadeExpanded by viewModel.isAnyShadeExpanded.collectAsStateWithLifecycle()
+        val isQsExpanded by viewModel.isQsExpanded.collectAsStateWithLifecycle()
+        val isNotificationsExpanded by
+            viewModel.isNotificationsExpanded.collectAsStateWithLifecycle()
 
-        // Break early if there's nothing to render
-        if (activeChip == null) {
+        // QuickActions is a separate scene overlay and may briefly retain an
+        // active panel while the QS/shade is expanding. Never draw its media
+        // surface above the shade, even before the controller dismisses it.
+        if (activeChip == null || isShadeExpanded ||
+            isQsExpanded || isNotificationsExpanded) {
             return
         }
 
