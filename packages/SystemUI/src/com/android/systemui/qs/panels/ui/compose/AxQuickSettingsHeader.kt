@@ -34,6 +34,7 @@ import android.view.View
 import android.view.ViewGroup
 import androidx.annotation.ColorInt
 import androidx.annotation.LayoutRes
+import androidx.annotation.VisibleForTesting
 import androidx.compose.foundation.basicMarquee
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -371,7 +372,8 @@ private fun AxStatusIcons(
 }
 
 @Composable
-private fun AxPrivacyChip(
+@VisibleForTesting
+internal fun AxPrivacyChip(
     privacyList: List<PrivacyItem>,
     onClick: (OngoingPrivacyChip) -> Unit,
     modifier: Modifier = Modifier,
@@ -379,6 +381,12 @@ private fun AxPrivacyChip(
     AndroidView(
         factory = { context ->
             OngoingPrivacyChip(context, null).also { chip ->
+                // The status-bar view defaults to MATCH_PARENT height. A bounded
+                // landscape Row then grows to the whole panel, pushing QS content out.
+                // Let the chip's resource-sized content determine the Compose row height.
+                chip.layoutParams = chip.layoutParams.apply {
+                    height = ViewGroup.LayoutParams.WRAP_CONTENT
+                }
                 chip.privacyList = privacyList
                 chip.setOnClickListener { onClick(chip) }
             }
